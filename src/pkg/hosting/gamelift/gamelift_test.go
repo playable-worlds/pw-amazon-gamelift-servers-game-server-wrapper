@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"runtime"
 	"testing"
@@ -175,6 +177,52 @@ func TestGamelift_Run_HappyPath_Call_HealthCheck(t *testing.T) {
 	//assert
 	assert.True(t, callback)
 	assert.Equal(t, 1, gameLiftMockHelper.messageSender.OnHealthCheckCount)
+}
+
+func TestGamelift_Run_ReadinessEnabled_WaitsForEndpoint(t *testing.T) {
+	config := Config{
+		GamePort:               100,
+		Anywhere:               config2.Anywhere{},
+		LogDirectory:           os.TempDir(),
+		GameServerLogDirectory: os.TempDir(),
+		Readiness: config2.Readiness{
+			Enabled: true,
+		},
+	}
+
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	config.Readiness.Endpoint = server.URL
+
+	gameLiftMockHelper := createGameLiftMockHelper(&config)
+	err := gameLiftMockHelper.gamelift.Run(gameLiftMockHelper.ctx)
+
+	assert.Nil(t, err)
+	assert.True(t, gameLiftMockHelper.gameLiftSdk.ProcessReadyCalled)
+	assert.GreaterOrEqual(t, callCount, 1)
+}
+
+func TestGamelift_Run_ReadinessEnabledWithoutEndpoint_ReturnsError(t *testing.T) {
+	config := Config{
+		GamePort:               100,
+		Anywhere:               config2.Anywhere{},
+		LogDirectory:           os.TempDir(),
+		GameServerLogDirectory: os.TempDir(),
+		Readiness: config2.Readiness{
+			Enabled: true,
+		},
+	}
+
+	gameLiftMockHelper := createGameLiftMockHelper(&config)
+	err := gameLiftMockHelper.gamelift.Run(gameLiftMockHelper.ctx)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "readiness endpoint must be provided")
+	assert.False(t, gameLiftMockHelper.gameLiftSdk.ProcessReadyCalled)
 }
 
 func TestGamelift_Run_HappyPath_Call_ProcessTerminate(t *testing.T) {

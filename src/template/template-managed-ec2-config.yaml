@@ -8,6 +8,10 @@ log-config:
 ports:
   gamePort: 37016
 
+readiness:
+  enabled: false
+  endpoint: "http://127.0.0.1:8080/health"
+
 orchestration:
   emitCustomEvents: true
   account:  "aws account used for the game server"

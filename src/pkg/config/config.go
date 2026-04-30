@@ -28,12 +28,19 @@ type ProcessInfo struct {
 // GameLift configuration for Amazon GameLift service.
 type GameLift struct {
 	Anywhere Anywhere `mapstructure:"anywhere" yaml:"anywhere"`
+	Readiness Readiness `mapstructure:"readiness" yaml:"readiness"`
 	/// To be filled in by another source, not config
 	Port                       int    `mapstructure:"-" yaml:"-"`
 	QueryPort                  int    `mapstructure:"-" yaml:"-"`
 	InjectFleetRoleCredentials bool   `mapstructure:"injectFleetRoleCredentials" yaml:"injectFleetRoleCredentials"`
 	FleetRoleArn               string `mapstructure:"fleetRoleArn" yaml:"fleetRoleArn"`
 	FleetRoleSessionName       string `mapstructure:"fleetRoleSessionName" yaml:"fleetRoleSessionName,omitempty"`
+}
+
+// Readiness defines readiness endpoint checks before ProcessReady.
+type Readiness struct {
+	Enabled  bool   `mapstructure:"enabled" yaml:"enabled"`
+	Endpoint string `mapstructure:"endpoint" yaml:"endpoint"`
 }
 
 // AnywhereHostConfig defines the configuration for an Amazon GameLift Anywhere host.

@@ -35,6 +35,7 @@ type Config struct {
 type ConfigWrapper struct {
 	LogConfig                  LogConfig         `mapstructure:"log-config" yaml:"log-config"`
 	Anywhere                   AnywhereConfig    `mapstructure:"anywhere" yaml:"anywhere"`
+	Readiness                  config.Readiness  `mapstructure:"readiness" yaml:"readiness"`
 	Ports                      Ports             `mapstructure:"ports" yaml:"ports, omitempty"`
 	Route53                    Route53           `mapstructure:"route53" yaml:"route53"`
 	Orchestration              Orchestration     `mapstructure:"orchestration" yaml:"orchestration"`
@@ -269,6 +270,7 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 					IPv4Address:        configWrapper.Anywhere.IPv4,
 				},
 			},
+			Readiness: configWrapper.Readiness,
 			InjectFleetRoleCredentials: configWrapper.InjectFleetRoleCredentials,
 			FleetRoleArn:               configWrapper.FleetRoleArn,
 			FleetRoleSessionName:       configWrapper.FleetRoleSessionName,
