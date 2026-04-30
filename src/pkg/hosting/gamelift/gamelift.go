@@ -10,11 +10,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/config"
@@ -53,6 +56,7 @@ type gamelift struct {
 type Config struct {
 	GamePort                   int
 	Anywhere                   config.Anywhere // Contains configuration for GameLift Anywhere fleet
+	Readiness                  config.Readiness
 	Orchestration              Orchestration   // Contains configuration settings for messaging the Orchestration Server
 	LogDirectory               string          // Specifies the directory for general logging
 	GameServerLogDirectory     string          // Specifies the directory for game server specific logs
@@ -168,6 +172,10 @@ func (gameLift *gamelift) Run(parentCtx context.Context) error {
 		return errors.Wrapf(err, "unable to set SDKToolVersion environment variable")
 	}
 
+	if err := gameLift.waitForReadiness(ctx); err != nil {
+		return err
+	}
+
 	err = gameLift.sdk.ProcessReady(ctx, server.ProcessParameters{
 		Port: gameLift.cfg.GamePort,
 		LogParameters: server.LogParameters{
@@ -188,6 +196,41 @@ func (gameLift *gamelift) Run(parentCtx context.Context) error {
 	case err := <-gameLift.ec:
 		gameLift.logger.WarnContext(ctx, "error returned from Amazon GameLift hosting", "err", err)
 		return err
+	}
+}
+
+func (gameLift *gamelift) waitForReadiness(ctx context.Context) error {
+	if !gameLift.cfg.Readiness.Enabled {
+		return nil
+	}
+	if gameLift.cfg.Readiness.Endpoint == "" {
+		return errors.New("readiness endpoint must be provided when readiness is enabled")
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, gameLift.cfg.Readiness.Endpoint, nil)
+		if err != nil {
+			return errors.Wrap(err, "failed to create readiness request")
+		}
+
+		resp, err := client.Do(req)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			gameLift.logger.InfoContext(ctx, "readiness check passed", "endpoint", gameLift.cfg.Readiness.Endpoint)
+			return nil
+		}
+
+		gameLift.logger.WarnContext(ctx, "readiness check failed, retrying", "endpoint", gameLift.cfg.Readiness.Endpoint, "err", err)
+		select {
+		case <-ctx.Done():
+			return errors.Wrap(ctx.Err(), "readiness check canceled before endpoint became reachable")
+		case <-ticker.C:
+		}
 	}
 }
 

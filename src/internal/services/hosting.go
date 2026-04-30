@@ -28,6 +28,7 @@ func getHosting(ctx context.Context, cfg *config.Config, logger *slog.Logger, sp
 	return gamelift.New(ctx, &gamelift.Config{
 		GamePort:                   cfg.Ports.GamePort,
 		Anywhere:                   cfg.Hosting.GameLift.Anywhere,
+		Readiness:                  cfg.Hosting.GameLift.Readiness,
 		Orchestration:              gamelift.Orchestration(cfg.Orchestration),
 		LogDirectory:               cfg.Hosting.LogDirectory,
 		GameServerLogDirectory:     cfg.Hosting.AbsoluteGameServerLogDirectory,

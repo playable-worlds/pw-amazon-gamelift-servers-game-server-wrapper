@@ -224,6 +224,10 @@ anywhere:
 ports:
   gamePort: 37016
 
+readiness:
+  enabled: false                                                # (Optional) When true, the wrapper polls the endpoint and only calls ProcessReady after the endpoint is reachable.
+  endpoint: http://127.0.0.1:8080/health                        # (Required when enabled=true) Any HTTP response status is treated as ready.
+
 game-server-details:
   executable-file-path: ./MyGame/my-server-executable           # Entry point to execute the game server
   game-server-args:                                             # (Optional) Argument key value pairs that are passed to the game server entry point
@@ -235,6 +239,7 @@ game-server-details:
 - The `aws-profile` will be the profile name that you configured in [Configure AWS Profile](#configure-aws-profile).
 - Use the resources ARNs generated in [Create Anywhere resources](#create-anywhere-resources) for `location-arn` and `fleet-arn`.
 - (Optional) Use the compute resource output generated in [Create Anywhere resources](#create-anywhere-resources) for `compute-name` and `service-sdk-endpoint` to prevent the wrapper from registering a new Compute resource using your machine's `hostname`.
+- (Optional) Configure `readiness` to delay `ProcessReady` until your game server endpoint is reachable.
 - Provide the path of your game server executable in `executable-file-path`. Using the above config as an example the wrapper would expect the game server to be on disk at `./gameserver.sh`
 - `game-server-args` defines arguments that will be passed to the game server executable. See [Game Server Arguments](#game-server-arguments) for details.
 
@@ -288,6 +293,10 @@ log-config:
 ports:
   gamePort: 37016
 
+readiness:
+  enabled: false                                                # (Optional) When true, the wrapper polls the endpoint and only calls ProcessReady after the endpoint is reachable.
+  endpoint: http://127.0.0.1:8080/health                        # (Required when enabled=true) Any HTTP response status is treated as ready.
+
 game-server-details:
   executable-file-path: ./MyGame/my-server-executable           # Entry point to execute the game server
   game-server-args:                                             # (Optional) Argument key value pairs that are passed to the game server entry point
@@ -297,6 +306,7 @@ game-server-details:
 ```
 
 - You can define the path of game server logs in `game-server-logs-dir`. The content will be uploaded to Amazon GameLift Servers, and will be available to download using [GetGameSessionLogUrl API](https://docs.aws.amazon.com/gamelift/latest/apireference/API_GetGameSessionLogUrl.html).
+- (Optional) Configure `readiness` to delay `ProcessReady` until your game server endpoint is reachable.
 - Provide the path of your game server executable in `executable-file-path`. Using the above config as an example the wrapper would expect the game server to be on disk at `./gameserver.sh`
 - `game-server-args` defines arguments that will be passed to the game server executable. See [Game Server Arguments](#game-server-arguments) for details
 
@@ -409,6 +419,10 @@ log-config:
 ports:
   gamePort: 37016
 
+readiness:
+  enabled: false                                                # (Optional) When true, the wrapper polls the endpoint and only calls ProcessReady after the endpoint is reachable.
+  endpoint: http://127.0.0.1:8080/health                        # (Required when enabled=true) Any HTTP response status is treated as ready.
+
 game-server-details:
   executable-file-path: ./MyGame/my-server-executable           # Entry point to execute the game server
   game-server-args:                                             # (Optional) Argument key value pairs that are passed to the game server entry point
@@ -418,6 +432,7 @@ game-server-details:
 ```
 
 - Provide the path of your game server executable in `executable-file-path`. Using the above config as an example the wrapper would expect the game server to be on disk at `./gameserver.sh`
+- (Optional) Configure `readiness` to delay `ProcessReady` until your game server endpoint is reachable.
 - `game-server-args` defines arguments that will be passed to the game server executable. See [Game Server Arguments](#game-server-arguments) for details.
 
 ### Build Image
