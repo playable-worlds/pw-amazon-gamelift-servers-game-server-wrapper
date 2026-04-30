@@ -340,6 +340,7 @@ func (gameLift *gamelift) glOnStartGameSession(gs model.GameSession) {
 	err = gameLift.sender.OnStartGameSession(safeCtx, gs)
 	if err != nil {
 		gameLift.ec <- fmt.Errorf("failed to send message to orchestration service: %w", err)
+		return
 	}
 
 	if err := gameLift.sdk.ActivateGameSession(gameLift.ctx); err != nil {
