@@ -336,15 +336,16 @@ func (gameLift *gamelift) glOnStartGameSession(gs model.GameSession) {
 		hse.ContainerPort = gameLift.cfg.GamePort
 	}
 
-	if err := gameLift.sdk.ActivateGameSession(gameLift.ctx); err != nil {
-		gameLift.ec <- err
-		return
-	}
-
 	safeCtx := context.WithoutCancel(ctx)
 	err = gameLift.sender.OnStartGameSession(safeCtx, gs)
 	if err != nil {
 		gameLift.ec <- fmt.Errorf("failed to send message to orchestration service: %w", err)
+		return
+	}
+
+	if err := gameLift.sdk.ActivateGameSession(gameLift.ctx); err != nil {
+		gameLift.ec <- err
+		return
 	}
 
 	// Log configuration for credential injection
