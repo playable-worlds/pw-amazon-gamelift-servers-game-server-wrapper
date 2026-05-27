@@ -26,7 +26,8 @@ type Service interface {
 }
 
 type Config struct {
-	QuickSave bool
+	QuickSave       bool
+	QuickSaveApiKey string
 }
 
 type service struct {

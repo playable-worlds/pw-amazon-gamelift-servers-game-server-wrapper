@@ -44,6 +44,7 @@ type ConfigWrapper struct {
 	FleetRoleArn               string            `mapstructure:"fleet-role-arn" yaml:"fleet-role-arn"`
 	FleetRoleSessionName       string            `mapstructure:"fleet-role-session-name" yaml:"fleet-role-session-name"`
 	QuickSave                  bool              `mapstructure:"quick-save" yaml:"quick-save"`
+	QuickSaveApiKey            string            `mapstructure:"quick-save-api-key" yaml:"quick-save-api-key"`
 	Datadog                    Datadog           `mapstructure:"datadog" yaml:"datadog,omitempty"`
 }
 
@@ -276,7 +277,8 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 			FleetRoleArn:               configWrapper.FleetRoleArn,
 			FleetRoleSessionName:       configWrapper.FleetRoleSessionName,
 		},
-		QuickSave: configWrapper.QuickSave,
+		QuickSave:       configWrapper.QuickSave,
+		QuickSaveApiKey: configWrapper.QuickSaveApiKey,
 	}
 	cfg.Datadog = Datadog{
 		Enabled:    configWrapper.Datadog.Enabled,
@@ -340,9 +342,10 @@ type Ports struct {
 
 // Hosting defines all hosting-related configuration settings.
 type Hosting struct {
-	config.Hosting `mapstructure:",squash"`
-	GameLift       config.GameLift `mapstructure:"gamelift" yaml:"gameLift"`
-	QuickSave      bool            `mapstructure:"quickSave" yaml:"quickSave"`
+	config.Hosting   `mapstructure:",squash"`
+	GameLift         config.GameLift `mapstructure:"gamelift" yaml:"gameLift"`
+	QuickSave        bool            `mapstructure:"quickSave" yaml:"quickSave"`
+	QuickSaveApiKey  string          `mapstructure:"quickSaveApiKey" yaml:"quickSaveApiKey"`
 }
 
 // Route53 defines all Route53 related configuration settings.

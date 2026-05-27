@@ -12,6 +12,7 @@ readiness:
   endpoint: "http://127.0.0.1:8080/health"
 
 quick-save: false  # Set to true to enable quicksave functionality on game server termination
+quick-save-api-key: ""  # API key for quicksave requests (optional)
 
 orchestration:
   emitCustomEvents: true
