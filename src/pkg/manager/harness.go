@@ -179,6 +179,7 @@ func (harness *harness) Run(ctx context.Context) error {
 		harness.logger.DebugContext(ctx, "Received hosting terminate event", "event", hostingTerminateEvent)
 
 		if harness.quickSaveEnabled && harness.hostingStartEvent != nil {
+			harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
 			if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort); err != nil {
 				harness.logger.WarnContext(ctx, "Failed to perform quicksave", "error", err)
 			}
@@ -210,6 +211,7 @@ func (harness *harness) Run(ctx context.Context) error {
 //   - error: An error if cleanup fails
 func (harness *harness) Close(ctx context.Context) error {
 	if harness.quickSaveEnabled && harness.hostingStartEvent != nil {
+		harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
 		if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort); err != nil {
 			harness.logger.WarnContext(ctx, "Failed to perform quicksave during close", "error", err)
 		}
