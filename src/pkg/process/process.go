@@ -122,6 +122,13 @@ func (process *process) Run(ctx context.Context, args *Args, pidChan chan<- int)
 			env = append(env, fmt.Sprintf("%s=%s", strings.ToUpper(k), v))
 		}
 		process.cmd.Env = env
+
+		awsVars := []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION"}
+		awsEnvPresent := make(map[string]bool, len(awsVars))
+		for _, k := range awsVars {
+			_, awsEnvPresent[k] = envMap[k]
+		}
+		process.logger.InfoContext(ctx, "AWS env vars in child process environment", "present", awsEnvPresent)
 	}
 
 	process.logger.InfoContext(ctx, "Starting process", "path", process.exePath, "args", args)
@@ -140,6 +147,7 @@ func (process *process) Run(ctx context.Context, args *Args, pidChan chan<- int)
 		return res, err
 	}
 
+	process.logger.InfoContext(ctx, "Process started", "pid", process.cmd.Process.Pid)
 	if pidChan != nil {
 		go func() {
 			pidChan <- process.cmd.Process.Pid
@@ -160,11 +168,10 @@ func (process *process) Run(ctx context.Context, args *Args, pidChan chan<- int)
 		}
 	}
 
-	process.logger.InfoContext(ctx, "Process finished", "err", err)
-
 	if process.cmd.ProcessState != nil {
 		res.ReturnCode = process.cmd.ProcessState.ExitCode()
 	}
+	process.logger.InfoContext(ctx, "Process finished", "pid", process.cmd.Process.Pid, "exitCode", res.ReturnCode, "err", err)
 
 	return res, err
 }
