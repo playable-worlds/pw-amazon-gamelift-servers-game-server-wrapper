@@ -47,6 +47,10 @@ func route53Request(ctx context.Context, data route53RequestData, client *route5
 		return errors.Wrap(err, "error performing route53 upsert Request")
 	}
 
+	logger.InfoContext(ctx, "route53 record upserted",
+		"name", data.recordName,
+		"value", data.recordValue,
+		"hostedZoneId", data.hostedZoneId)
 	return nil
 }
 
