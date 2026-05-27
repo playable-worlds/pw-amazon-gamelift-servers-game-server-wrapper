@@ -12,6 +12,8 @@ readiness:
   enabled: false
   endpoint: "http://127.0.0.1:8080/health"
 
+quick-save: false  # Set to true to enable quicksave functionality on game server termination
+
 orchestration:
   emitCustomEvents: true
   account:  "aws account used for the game server"

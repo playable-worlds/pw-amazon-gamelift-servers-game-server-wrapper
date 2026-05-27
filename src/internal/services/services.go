@@ -56,7 +56,9 @@ func Default(ctx context.Context, cfg *config.Config, logger *slog.Logger, obs *
 	}
 
 	logger.DebugContext(ctx, "Creating game manager instance")
-	managerInstance := manager.New(&manager.Config{}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner), datadogService)
+	managerInstance := manager.New(&manager.Config{
+		QuickSave: cfg.Hosting.QuickSave,
+	}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave), datadogService)
 
 	logger.DebugContext(ctx, "Creating game runner instance")
 	runnerInstance := runner.New("runner", managerInstance, logger, obs.Spanner)
