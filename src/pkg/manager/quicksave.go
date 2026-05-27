@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 type QuickSave struct {
@@ -13,6 +14,10 @@ type QuickSave struct {
 }
 
 func quicksave(ctx context.Context, zoneid string, port int, apiKey string) error {
+	// Create a timeout context for quicksave to ensure it doesn't hang indefinitely
+	quicksaveCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	url := fmt.Sprintf("http://localhost:%d/quicksave", port)
 
 	payload := QuickSave{ZoneId: zoneid}
@@ -21,7 +26,7 @@ func quicksave(ctx context.Context, zoneid string, port int, apiKey string) erro
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(quicksaveCtx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

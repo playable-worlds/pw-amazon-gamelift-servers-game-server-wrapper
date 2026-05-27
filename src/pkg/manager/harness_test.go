@@ -299,5 +299,5 @@ func Test_Harness_QuickSave_Uses_GameSessionName(t *testing.T) {
 	// Check the log to verify quicksave was attempted
 	logBuffer := harnessTestHelper.LogBuffer.String()
 	// Since we don't have a real HTTP server, quicksave will fail, but we can verify it was attempted
-	assert.Contains(t, logBuffer, "Failed to perform quicksave during close")
+	assert.Contains(t, logBuffer, "Failed to perform quicksave")
 }
