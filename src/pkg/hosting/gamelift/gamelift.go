@@ -23,6 +23,8 @@ import (
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/config"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/constants"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/hosting"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/hosting/gamelift/initialiser"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/hosting/gamelift/platform"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/hosting/gamelift/sdk"
@@ -414,6 +416,17 @@ func (gameLift *gamelift) glOnStartGameSession(gs model.GameSession) {
 				SecretAccessKey: secretKey,
 				SessionToken:    sessionToken,
 			}
+		}
+	} else {
+		if cfg, cfgErr := awsconfig.LoadDefaultConfig(gameLift.ctx); cfgErr != nil {
+			gameLift.logger.WarnContext(gameLift.ctx, "could not load default AWS config to check caller identity", "err", cfgErr)
+		} else if identity, stsErr := sts.NewFromConfig(cfg).GetCallerIdentity(gameLift.ctx, nil); stsErr != nil {
+			gameLift.logger.WarnContext(gameLift.ctx, "could not get caller identity", "err", stsErr)
+		} else {
+			gameLift.logger.InfoContext(gameLift.ctx, "AWS caller identity (using instance credentials)",
+				"account", *identity.Account,
+				"arn", *identity.Arn,
+				"userId", *identity.UserId)
 		}
 	}
 
