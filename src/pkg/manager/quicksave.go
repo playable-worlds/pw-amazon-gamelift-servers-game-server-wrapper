@@ -12,7 +12,7 @@ type QuickSave struct {
 	ZoneId string `json:"zone_id"`
 }
 
-func quicksave(ctx context.Context, zoneid string, port int) error {
+func quicksave(ctx context.Context, zoneid string, port int, apiKey string) error {
 	url := fmt.Sprintf("http://localhost:%d/quicksave", port)
 
 	payload := QuickSave{ZoneId: zoneid}
@@ -26,6 +26,9 @@ func quicksave(ctx context.Context, zoneid string, port int) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("x-api-key", apiKey)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

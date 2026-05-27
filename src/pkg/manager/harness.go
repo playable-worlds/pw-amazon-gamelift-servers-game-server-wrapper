@@ -35,6 +35,7 @@ type harness struct {
 	spanner           observability.Spanner
 	hostingStartEvent *events.HostingStart
 	quickSaveEnabled  bool
+	quickSaveApiKey   string
 }
 
 // HostingStart handles the server hosting start event.
@@ -180,7 +181,7 @@ func (harness *harness) Run(ctx context.Context) error {
 
 		if harness.quickSaveEnabled && harness.hostingStartEvent != nil {
 			harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
-			if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort); err != nil {
+			if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort, harness.quickSaveApiKey); err != nil {
 				harness.logger.WarnContext(ctx, "Failed to perform quicksave", "error", err)
 			}
 		}
@@ -212,7 +213,7 @@ func (harness *harness) Run(ctx context.Context) error {
 func (harness *harness) Close(ctx context.Context) error {
 	if harness.quickSaveEnabled && harness.hostingStartEvent != nil {
 		harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
-		if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort); err != nil {
+		if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort, harness.quickSaveApiKey); err != nil {
 			harness.logger.WarnContext(ctx, "Failed to perform quicksave during close", "error", err)
 		}
 	}
@@ -238,10 +239,11 @@ func (harness *harness) Close(ctx context.Context) error {
 //   - logger: Logger instance for recording operations and events
 //   - spanner: Observability component for monitoring and tracing
 //   - quickSaveEnabled: Whether quicksave functionality is enabled
+//   - quickSaveApiKey: API key for quicksave requests
 //
 // Returns:
 //   - *harness: A new harness instance configured with the provided components
-func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spanner, quickSaveEnabled bool) *harness {
+func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spanner, quickSaveEnabled bool, quickSaveApiKey string) *harness {
 	b := &harness{
 		hostingTerminate: make(chan *events.HostingTerminate),
 		hostingStart:     make(chan *events.HostingStart),
@@ -249,6 +251,7 @@ func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spa
 		game:             game,
 		spanner:          spanner,
 		quickSaveEnabled: quickSaveEnabled,
+		quickSaveApiKey:  quickSaveApiKey,
 	}
 
 	return b
