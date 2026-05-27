@@ -33,6 +33,10 @@ type HarnessTestHelper struct {
 }
 
 func CreateHarnessTestHelper(duration time.Duration) HarnessTestHelper {
+	return CreateHarnessTestHelperWithQuickSave(duration, false)
+}
+
+func CreateHarnessTestHelperWithQuickSave(duration time.Duration, quickSaveEnabled bool) HarnessTestHelper {
 	logBuffer := bytes.Buffer{}
 	ctx, _ := context.WithTimeout(context.Background(), duration)
 	logger := slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{
@@ -41,7 +45,7 @@ func CreateHarnessTestHelper(duration time.Duration) HarnessTestHelper {
 	spannerMock := mocks.SpannerMock{}
 	gameService := &GameServiceMock{}
 
-	harness := NewHarness(gameService, logger, &spannerMock)
+	harness := NewHarness(gameService, logger, &spannerMock, quickSaveEnabled)
 	return HarnessTestHelper{
 		Logger:      logger,
 		LogBuffer:   &logBuffer,
@@ -271,4 +275,29 @@ func Test_Harness_Close_HappyPath(t *testing.T) {
 	//assert
 	assert.Nil(t, err)
 	assert.True(t, harnessTestHelper.GameService.StopCalled)
+}
+
+func Test_Harness_QuickSave_Uses_GameSessionName(t *testing.T) {
+	//arrange
+	harnessTestHelper := CreateHarnessTestHelperWithQuickSave(time.Second * 5, true)
+
+	// Set up a hosting start event with a specific GameSessionName
+	testGameSessionName := "79315e7a-02f5-4b86-8b3d-88ffdcf3a081"
+	harnessTestHelper.Harness.hostingStartEvent = &events.HostingStart{
+		GameSessionName: testGameSessionName,
+		GamePort:        50042,
+		FleetId:         "fleet-c936e912-1b68-4aec-bf9a-1f4416ae7ed7",
+	}
+
+	//act
+	err := harnessTestHelper.Harness.Close(harnessTestHelper.Ctx)
+
+	//assert
+	assert.Nil(t, err)
+	assert.True(t, harnessTestHelper.GameService.StopCalled)
+
+	// Check the log to verify quicksave was attempted
+	logBuffer := harnessTestHelper.LogBuffer.String()
+	// Since we don't have a real HTTP server, quicksave will fail, but we can verify it was attempted
+	assert.Contains(t, logBuffer, "Failed to perform quicksave during close")
 }

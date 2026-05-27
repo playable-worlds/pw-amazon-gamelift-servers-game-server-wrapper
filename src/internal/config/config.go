@@ -43,6 +43,7 @@ type ConfigWrapper struct {
 	InjectFleetRoleCredentials bool              `mapstructure:"inject-fleet-role-credentials" yaml:"inject-fleet-role-credentials"`
 	FleetRoleArn               string            `mapstructure:"fleet-role-arn" yaml:"fleet-role-arn"`
 	FleetRoleSessionName       string            `mapstructure:"fleet-role-session-name" yaml:"fleet-role-session-name"`
+	QuickSave                  bool              `mapstructure:"quick-save" yaml:"quick-save"`
 	Datadog                    Datadog           `mapstructure:"datadog" yaml:"datadog,omitempty"`
 }
 
@@ -275,6 +276,7 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 			FleetRoleArn:               configWrapper.FleetRoleArn,
 			FleetRoleSessionName:       configWrapper.FleetRoleSessionName,
 		},
+		QuickSave: configWrapper.QuickSave,
 	}
 	cfg.Datadog = Datadog{
 		Enabled:    configWrapper.Datadog.Enabled,
@@ -340,6 +342,7 @@ type Ports struct {
 type Hosting struct {
 	config.Hosting `mapstructure:",squash"`
 	GameLift       config.GameLift `mapstructure:"gamelift" yaml:"gameLift"`
+	QuickSave      bool            `mapstructure:"quickSave" yaml:"quickSave"`
 }
 
 // Route53 defines all Route53 related configuration settings.

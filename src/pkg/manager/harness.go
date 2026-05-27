@@ -28,11 +28,13 @@ type Harness interface {
 }
 
 type harness struct {
-	hostingTerminate chan *events.HostingTerminate
-	hostingStart     chan *events.HostingStart
-	logger           *slog.Logger
-	game             game.Server
-	spanner          observability.Spanner
+	hostingTerminate  chan *events.HostingTerminate
+	hostingStart      chan *events.HostingStart
+	logger            *slog.Logger
+	game              game.Server
+	spanner           observability.Spanner
+	hostingStartEvent *events.HostingStart
+	quickSaveEnabled  bool
 }
 
 // HostingStart handles the server hosting start event.
@@ -122,6 +124,8 @@ func (harness *harness) Run(ctx context.Context) error {
 
 		harness.logger.DebugContext(ctx, "Received hosting start event", "event", hostingStartEvent)
 
+		harness.hostingStartEvent = hostingStartEvent
+
 		meta := map[string]string{
 			"fleet-id":        hostingStartEvent.FleetId,
 			"provider":        string(hostingStartEvent.Provider),
@@ -174,6 +178,13 @@ func (harness *harness) Run(ctx context.Context) error {
 
 		harness.logger.DebugContext(ctx, "Received hosting terminate event", "event", hostingTerminateEvent)
 
+		if harness.quickSaveEnabled && harness.hostingStartEvent != nil {
+			harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
+			if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort); err != nil {
+				harness.logger.WarnContext(ctx, "Failed to perform quicksave", "error", err)
+			}
+		}
+
 		hostingTerminateErrorChannel <- harness.game.Stop(ctx)
 	}()
 
@@ -199,6 +210,13 @@ func (harness *harness) Run(ctx context.Context) error {
 // Returns:
 //   - error: An error if cleanup fails
 func (harness *harness) Close(ctx context.Context) error {
+	if harness.quickSaveEnabled && harness.hostingStartEvent != nil {
+		harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
+		if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort); err != nil {
+			harness.logger.WarnContext(ctx, "Failed to perform quicksave during close", "error", err)
+		}
+	}
+
 	err := harness.game.Stop(ctx)
 
 	if harness.hostingTerminate != nil {
@@ -219,16 +237,18 @@ func (harness *harness) Close(ctx context.Context) error {
 //   - game: The game server instance to be managed
 //   - logger: Logger instance for recording operations and events
 //   - spanner: Observability component for monitoring and tracing
+//   - quickSaveEnabled: Whether quicksave functionality is enabled
 //
 // Returns:
 //   - *harness: A new harness instance configured with the provided components
-func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spanner) *harness {
+func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spanner, quickSaveEnabled bool) *harness {
 	b := &harness{
 		hostingTerminate: make(chan *events.HostingTerminate),
 		hostingStart:     make(chan *events.HostingStart),
 		logger:           logger,
 		game:             game,
 		spanner:          spanner,
+		quickSaveEnabled: quickSaveEnabled,
 	}
 
 	return b
