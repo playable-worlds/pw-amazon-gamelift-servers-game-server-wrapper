@@ -58,14 +58,19 @@ func SetupRoute53Mappings(ctx context.Context, logger *slog.Logger, zoneId strin
 		return errors.Wrap(err, "error getting private ip")
 	}
 
-	r53Config, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.Route53.Region), config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
-		Value: aws.Credentials{
-			AccessKeyID: creds.AccessKeyId, SecretAccessKey: creds.SecretAccessKey, SessionToken: creds.SessionToken, Source: "Fleet Instance Role",
-		},
-	}))
-	if err != nil {
-		logger.ErrorContext(ctx, "failed to retrieve given r53 config", "err", err)
-		r53Config, err = config.LoadDefaultConfig(ctx)
+	var r53Config aws.Config
+	if creds != nil {
+		r53Config, err = config.LoadDefaultConfig(ctx, config.WithRegion(cfg.Route53.Region), config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
+			Value: aws.Credentials{
+				AccessKeyID: creds.AccessKeyId, SecretAccessKey: creds.SecretAccessKey, SessionToken: creds.SessionToken, Source: "Fleet Instance Role",
+			},
+		}))
+		if err != nil {
+			logger.ErrorContext(ctx, "failed to retrieve given r53 config", "err", err)
+		}
+	}
+	if creds == nil || err != nil {
+		r53Config, err = config.LoadDefaultConfig(ctx, config.WithRegion(cfg.Route53.Region))
 		if err != nil {
 			logger.ErrorContext(ctx, "error getting default r53 config", "err", err)
 			return errors.Wrap(err, "error getting default r53 config")
