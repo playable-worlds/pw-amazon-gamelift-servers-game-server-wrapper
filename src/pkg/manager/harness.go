@@ -36,6 +36,7 @@ type harness struct {
 	hostingStartEvent *events.HostingStart
 	quickSaveEnabled  bool
 	quickSaveApiKey   string
+	quickSaveAttempted bool
 }
 
 // HostingStart handles the server hosting start event.
@@ -179,12 +180,8 @@ func (harness *harness) Run(ctx context.Context) error {
 
 		harness.logger.DebugContext(ctx, "Received hosting terminate event", "event", hostingTerminateEvent)
 
-		if harness.quickSaveEnabled && harness.hostingStartEvent != nil {
-			harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
-			if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort, harness.quickSaveApiKey); err != nil {
-				harness.logger.WarnContext(ctx, "Failed to perform quicksave", "error", err)
-			}
-		}
+		// Perform quicksave BEFORE stopping the game to ensure it completes
+		harness.performQuickSave(ctx)
 
 		hostingTerminateErrorChannel <- harness.game.Stop(ctx)
 	}()
@@ -202,6 +199,21 @@ func (harness *harness) Run(ctx context.Context) error {
 	}
 }
 
+// performQuickSave executes the quicksave operation if enabled and not already attempted.
+// This method ensures quicksave completes before the game server is stopped.
+func (harness *harness) performQuickSave(ctx context.Context) {
+	if harness.quickSaveEnabled && harness.hostingStartEvent != nil && !harness.quickSaveAttempted {
+		harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
+		harness.quickSaveAttempted = true
+		// Use context.Background() to ensure quicksave isn't cancelled by context cancellation
+		if err := quicksave(context.Background(), harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort, harness.quickSaveApiKey); err != nil {
+			harness.logger.WarnContext(ctx, "Failed to perform quicksave", "error", err)
+		} else {
+			harness.logger.DebugContext(ctx, "Quicksave completed successfully")
+		}
+	}
+}
+
 // Close performs cleanup and releases resources used by the harness.
 // It should be called when shutting down the server.
 //
@@ -211,12 +223,8 @@ func (harness *harness) Run(ctx context.Context) error {
 // Returns:
 //   - error: An error if cleanup fails
 func (harness *harness) Close(ctx context.Context) error {
-	if harness.quickSaveEnabled && harness.hostingStartEvent != nil {
-		harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
-		if err := quicksave(ctx, harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort, harness.quickSaveApiKey); err != nil {
-			harness.logger.WarnContext(ctx, "Failed to perform quicksave during close", "error", err)
-		}
-	}
+	// Perform quicksave BEFORE stopping the game to ensure it completes
+	harness.performQuickSave(ctx)
 
 	err := harness.game.Stop(ctx)
 
