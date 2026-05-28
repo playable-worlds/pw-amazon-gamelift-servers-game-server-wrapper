@@ -16,6 +16,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// testJWT is a fake token that passes isValidToken: three dot-separated parts where the
+// middle part decodes to JSON with a far-future "exp" claim.
+var testJWT = base64.StdEncoding.EncodeToString([]byte(`{"alg":"none"}`)) +
+	"." + base64.StdEncoding.EncodeToString([]byte(`{"exp":9999999999}`)) +
+	".sig"
+
 func TestSender_TokenEmpty(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
@@ -26,7 +32,7 @@ func TestSender_TokenEmpty(t *testing.T) {
 
 	// Assert
 	assert.NotNil(t, err, fmt.Sprintf("Expected error on start game session"))
-	assert.Contains(t, err.Error(), "Error acquiring token: token is empty")
+	assert.Contains(t, err.Error(), "an invalid token was acquired")
 }
 
 func TestSender_ErrorOnGettingToken(t *testing.T) {
@@ -65,10 +71,9 @@ func TestSender_OnStartGameSession_HappyPath(t *testing.T) {
 	assert.Contains(t, h.RequestHelper.RequestData[1].Body, "\"Id\":\"test-game-session-id\"")
 	assert.Contains(t, h.RequestHelper.RequestData[1].Body, "\"PlacementId\":\"test-game-session-id\"")
 
-	encoded := base64.StdEncoding.EncodeToString([]byte("test-client-id:test-client-secret"))
-	assert.Contains(t, h.RequestHelper.RequestData[0].Headers["Authorization"], fmt.Sprintf("Basic %s", encoded))
+	assert.NotEmpty(t, h.RequestHelper.RequestData[0].Headers["Authorization"], "auth header is empty")
 	assert.NotEmpty(t, h.RequestHelper.RequestData[1].Headers["Authorization"], "auth header is empty")
-	assert.Equal(t, "Basic test-token", h.RequestHelper.RequestData[1].Headers["Authorization"], "auth header has wrong value")
+	assert.Equal(t, "Bearer "+testJWT, h.RequestHelper.RequestData[1].Headers["Authorization"], "auth header has wrong value")
 }
 
 func TestSender_OnStartGameSession_HappyPath_DontEmit(t *testing.T) {
@@ -88,7 +93,7 @@ func TestSender_OnStartGameSession_HappyPath_DontEmit(t *testing.T) {
 func TestSender_OnStartGameSession_ExpiredToken_HappyPath(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
-	h.RequestHelper.RequestResults = []string{"test-token-one", "", "test-token-two", ""}
+	h.RequestHelper.RequestResults = []string{testJWT, "", testJWT, ""}
 	h.RequestHelper.RequestErrors = []error{nil, &helpers.UnauthorisedError{Err: "test-unauthorised-error"}, nil, nil}
 
 	// Act
@@ -103,17 +108,16 @@ func TestSender_OnStartGameSession_ExpiredToken_HappyPath(t *testing.T) {
 	assert.Equal(t, h.Config.GetTokenUrl, h.RequestHelper.RequestData[0].Url, "the wrong request url was used")
 	assert.Equal(t, h.Config.GetTokenUrl, h.RequestHelper.RequestData[2].Url, "the wrong request url was used")
 
-	encoded := base64.StdEncoding.EncodeToString([]byte("test-client-id:test-client-secret"))
-	assert.Contains(t, h.RequestHelper.RequestData[0].Headers["Authorization"], fmt.Sprintf("Basic %s", encoded))
-	assert.Contains(t, h.RequestHelper.RequestData[2].Headers["Authorization"], fmt.Sprintf("Basic %s", encoded))
+	assert.NotEmpty(t, h.RequestHelper.RequestData[0].Headers["Authorization"], "auth header is empty")
+	assert.NotEmpty(t, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header is empty")
 	assert.NotEmpty(t, h.RequestHelper.RequestData[3].Headers["Authorization"], "auth header is empty")
-	assert.Equal(t, "Basic test-token-two", h.RequestHelper.RequestData[3].Headers["Authorization"], "auth header has wrong value")
+	assert.Equal(t, "Bearer "+testJWT, h.RequestHelper.RequestData[3].Headers["Authorization"], "auth header has wrong value")
 }
 
 func TestSender_OnStartGameSession_ExpiredToken_ErrorOnRefreshingToken(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
-	h.RequestHelper.RequestResults = []string{"test-token-one", "", "", ""}
+	h.RequestHelper.RequestResults = []string{testJWT, "", "", ""}
 	h.RequestHelper.RequestErrors = []error{nil, &helpers.UnauthorisedError{Err: "test-unauthorised-error"}, errors.New("test-error"), nil}
 
 	// Act
@@ -145,7 +149,7 @@ func TestSender_OnStartGameSession_RequestFailure(t *testing.T) {
 func TestSender_OnHostingTerminate_HappyPath(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
-	h.RequestHelper.RequestResults = []string{"test-token", "", ""}
+	h.RequestHelper.RequestResults = []string{testJWT, "", ""}
 	h.RequestHelper.RequestErrors = []error{nil, nil, nil}
 
 	// Act
@@ -170,7 +174,7 @@ func TestSender_OnHostingTerminate_HappyPath(t *testing.T) {
 	assert.Contains(t, h.RequestHelper.RequestData[2].Body, "\"PlacementId\":\"test-game-session-id\"")
 
 	assert.NotEmpty(t, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header is empty")
-	assert.Equal(t, "Basic test-token", h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header has wrong value")
+	assert.Equal(t, "Bearer "+testJWT, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header has wrong value")
 }
 
 func TestSender_OnHostingTerminate_HappyPath_DontEmit(t *testing.T) {
@@ -190,7 +194,7 @@ func TestSender_OnHostingTerminate_HappyPath_DontEmit(t *testing.T) {
 func TestSender_OnHostingTerminate_RequestFailure(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
-	h.RequestHelper.RequestResults = []string{"test-token", "", ""}
+	h.RequestHelper.RequestResults = []string{testJWT, "", ""}
 	h.RequestHelper.RequestErrors = []error{nil, nil, errors.New("test-error")}
 
 	err := h.Sender.OnStartGameSession(*h.Ctx, *h.GameSession)
@@ -243,7 +247,7 @@ func TestSender_OnHealthCheck_HappyPath_DontEmit(t *testing.T) {
 func TestSender_OnUpdateGameSession_HappyPath_PlacementActive(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
-	h.RequestHelper.RequestResults = []string{"test-token", "", ""}
+	h.RequestHelper.RequestResults = []string{testJWT, "", ""}
 	h.RequestHelper.RequestErrors = []error{nil, nil, nil}
 
 	err := h.Sender.OnStartGameSession(*h.Ctx, *h.GameSession)
@@ -267,14 +271,14 @@ func TestSender_OnUpdateGameSession_HappyPath_PlacementActive(t *testing.T) {
 	assert.Contains(t, h.RequestHelper.RequestData[2].Body, "\"PlacementId\":\"test-game-session-id\"")
 
 	assert.NotEmpty(t, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header is empty")
-	assert.Equal(t, "Basic test-token", h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header has wrong value")
+	assert.Equal(t, "Bearer "+testJWT, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header has wrong value")
 }
 
 func TestSender_OnUpdateGameSession_HappyPath_PlacementActive_NoDormantProperty(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
 	delete(h.GameSession.GameProperties, "dormant")
-	h.RequestHelper.RequestResults = []string{"test-token", "", ""}
+	h.RequestHelper.RequestResults = []string{testJWT, "", ""}
 	h.RequestHelper.RequestErrors = []error{nil, nil, nil}
 
 	err := h.Sender.OnStartGameSession(*h.Ctx, *h.GameSession)
@@ -299,14 +303,14 @@ func TestSender_OnUpdateGameSession_HappyPath_PlacementActive_NoDormantProperty(
 	assert.Contains(t, h.RequestHelper.RequestData[2].Body, "\"PlacementId\":\"test-game-session-id\"")
 
 	assert.NotEmpty(t, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header is empty")
-	assert.Equal(t, "Basic test-token", h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header has wrong value")
+	assert.Equal(t, "Bearer "+testJWT, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header has wrong value")
 }
 
 func TestSender_OnUpdateGameSession_HappyPath_PlacementDormant(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
 	h.GameSession.GameProperties["dormant"] = "true"
-	h.RequestHelper.RequestResults = []string{"test-token", "", ""}
+	h.RequestHelper.RequestResults = []string{testJWT, "", ""}
 	h.RequestHelper.RequestErrors = []error{nil, nil, nil}
 
 	err := h.Sender.OnStartGameSession(*h.Ctx, *h.GameSession)
@@ -330,13 +334,13 @@ func TestSender_OnUpdateGameSession_HappyPath_PlacementDormant(t *testing.T) {
 	assert.Contains(t, h.RequestHelper.RequestData[2].Body, "\"PlacementId\":\"test-game-session-id\"")
 
 	assert.NotEmpty(t, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header is empty")
-	assert.Equal(t, "Basic test-token", h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header has wrong value")
+	assert.Equal(t, "Bearer "+testJWT, h.RequestHelper.RequestData[2].Headers["Authorization"], "auth header has wrong value")
 }
 
 func TestSender_OnUpdateGameSession_RequestFailure(t *testing.T) {
 	// Arrange
 	h := newTestHelper()
-	h.RequestHelper.RequestResults = []string{"test-token", "", ""}
+	h.RequestHelper.RequestResults = []string{testJWT, "", ""}
 	h.RequestHelper.RequestErrors = []error{nil, nil, errors.New("test-error")}
 
 	err := h.Sender.OnStartGameSession(*h.Ctx, *h.GameSession)
@@ -363,7 +367,7 @@ func newTestHelper() *testHelper {
 	}))
 	reqHelper := newMockHttpHelper()
 	reqHelper.RequestErrors = []error{nil, nil}
-	reqHelper.RequestResults = []string{"test-token", ""}
+	reqHelper.RequestResults = []string{testJWT, ""}
 
 	region := "test-region"
 	cfg := &config.Orchestration{
