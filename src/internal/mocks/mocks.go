@@ -6,6 +6,8 @@
 package mocks
 
 import (
+	"time"
+
 	"github.com/amazon-gamelift/amazon-gamelift-servers-go-server-sdk/v5/server"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/process"
@@ -61,6 +63,7 @@ type GameLiftSdkMock struct {
 	FleetRoleAccessKeyId         string
 	FleetRoleSecretAccessKey     string
 	FleetRoleSessionToken        string
+	FleetRoleExpiration          time.Time
 	GetFleetRoleCredentialsError error
 	LastRoleArn                  string
 	LastRoleSessionName          string
@@ -100,10 +103,10 @@ func (gameLiftSdkMock *GameLiftSdkMock) Destroy(ctx context.Context) error {
 	return gameLiftSdkMock.InitSdkError
 }
 
-func (gameLiftSdkMock *GameLiftSdkMock) GetFleetRoleCredentials(ctx context.Context, roleArn string, roleSessionName string) (string, string, string, error) {
+func (gameLiftSdkMock *GameLiftSdkMock) GetFleetRoleCredentials(ctx context.Context, roleArn string, roleSessionName string) (string, string, string, time.Time, error) {
 	gameLiftSdkMock.LastRoleArn = roleArn
 	gameLiftSdkMock.LastRoleSessionName = roleSessionName
-	return gameLiftSdkMock.FleetRoleAccessKeyId, gameLiftSdkMock.FleetRoleSecretAccessKey, gameLiftSdkMock.FleetRoleSessionToken, gameLiftSdkMock.GetFleetRoleCredentialsError
+	return gameLiftSdkMock.FleetRoleAccessKeyId, gameLiftSdkMock.FleetRoleSecretAccessKey, gameLiftSdkMock.FleetRoleSessionToken, gameLiftSdkMock.FleetRoleExpiration, gameLiftSdkMock.GetFleetRoleCredentialsError
 }
 
 func (gameLiftSdkMock *GameLiftSdkMock) GetSdkVersion() (string, error) {

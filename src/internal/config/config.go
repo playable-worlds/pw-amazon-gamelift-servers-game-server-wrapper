@@ -40,7 +40,9 @@ type ConfigWrapper struct {
 	Route53                    Route53           `mapstructure:"route53" yaml:"route53"`
 	Orchestration              Orchestration     `mapstructure:"orchestration" yaml:"orchestration"`
 	GameServerDetails          GameServerDetails `mapstructure:"game-server-details" yaml:"game-server-details"`
+	UseFleetRoleCredentials    bool              `mapstructure:"use-fleet-role-credentials" yaml:"use-fleet-role-credentials"`
 	InjectFleetRoleCredentials bool              `mapstructure:"inject-fleet-role-credentials" yaml:"inject-fleet-role-credentials"`
+	LocalCredentialServer      bool              `mapstructure:"local-credential-server" yaml:"local-credential-server"`
 	FleetRoleArn               string            `mapstructure:"fleet-role-arn" yaml:"fleet-role-arn"`
 	FleetRoleSessionName       string            `mapstructure:"fleet-role-session-name" yaml:"fleet-role-session-name"`
 	QuickSave                  bool              `mapstructure:"quick-save" yaml:"quick-save"`
@@ -273,7 +275,9 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 				},
 			},
 			Readiness: configWrapper.Readiness,
+			UseFleetRoleCredentials:    configWrapper.UseFleetRoleCredentials,
 			InjectFleetRoleCredentials: configWrapper.InjectFleetRoleCredentials,
+			LocalCredentialServer:      configWrapper.LocalCredentialServer,
 			FleetRoleArn:               configWrapper.FleetRoleArn,
 			FleetRoleSessionName:       configWrapper.FleetRoleSessionName,
 		},

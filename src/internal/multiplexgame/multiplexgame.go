@@ -17,6 +17,7 @@ import (
 	"os"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/credserver"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/multiplexgame/args"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/game"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/helpers"
@@ -68,6 +69,7 @@ type MultiplexGame struct {
 	spanner              observability.Spanner
 	stdout, stderr       *logging.BufferedLogger
 	proc                 process.Process
+	credServer           *credserver.Server
 	status               events.GameStatus
 	cancel               func()
 }
@@ -165,6 +167,19 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 	}
 	multiplexGame.logger.DebugContext(ctx, "cli args: ", "args", processArgs)
 
+	var credSrv *credserver.Server
+	if startArgs != nil && startArgs.CredentialsFetcher != nil {
+		credSrv, err = credserver.New(multiplexGame.logger, startArgs.CredentialsFetcher)
+		if err != nil {
+			return fmt.Errorf("failed to create credential server: %w", err)
+		}
+		if err := credSrv.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start credential server: %w", err)
+		}
+		multiplexGame.credServer = credSrv
+		defer credSrv.Stop(ctx)
+	}
+
 	if startArgs != nil {
 		procCfg := &process.Config{
 			EnvVars:          map[string]string{},
@@ -186,8 +201,8 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 			}
 		}
 
-		// If AWS credentials were provided in the hosting start event, set them as env vars for the child process
-		if startArgs.HostingStart != nil && startArgs.HostingStart.AwsCredentials != nil {
+		// Inject fleet-role credentials as AWS_* env vars if explicitly requested.
+		if startArgs.HostingStart != nil && startArgs.HostingStart.AwsCredentials != nil && startArgs.HostingStart.InjectAwsCredentials {
 			awsCredentials := startArgs.HostingStart.AwsCredentials
 			awsEnvVars := map[string]string{
 				"AWS_ACCESS_KEY_ID":     awsCredentials.AccessKeyId,
@@ -198,6 +213,11 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 			for k, v := range awsEnvVars {
 				procCfg.EnvVars[k] = v
 			}
+		}
+
+		if credSrv != nil {
+			procCfg.EnvVars["PW_CRED_SERVER_URL"] = credSrv.Addr
+			procCfg.EnvVars["PW_CRED_SERVER_TOKEN"] = credSrv.Token
 		}
 
 		// Add start args as env variables.

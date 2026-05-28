@@ -62,7 +62,9 @@ type Config struct {
 	Orchestration              Orchestration   // Contains configuration settings for messaging the Orchestration Server
 	LogDirectory               string          // Specifies the directory for general logging
 	GameServerLogDirectory     string          // Specifies the directory for game server specific logs
-	InjectFleetRoleCredentials bool            // Toggles calling GetFleetRoleCredentials for managed fleets
+	UseFleetRoleCredentials    bool            // Calls GetFleetRoleCredentials and stores credentials for Route53 and child-process use
+	InjectFleetRoleCredentials bool            // Injects fleet-role credentials as AWS_* env vars into the child process
+	LocalCredentialServer      bool            // Starts a local HTTP credential server and injects its address into the child process
 	RoleArn                    string          // Optional: Role ARN to request credentials for
 	RoleSessionName            string          // Optional: Session name to use for assuming the role
 }
@@ -393,28 +395,39 @@ func (gameLift *gamelift) glOnStartGameSession(gs model.GameSession) {
 		return
 	}
 
-	// Log configuration for credential injection
 	isAnywhere := gameLift.cfg.Anywhere.Host.FleetArn != ""
 	gameLift.logger.DebugContext(gameLift.ctx, "GetFleetRoleCredentials configuration",
 		"injectEnabled", gameLift.cfg.InjectFleetRoleCredentials,
 		"anywhereFleet", isAnywhere,
 	)
 
-	// Optionally get fleet role credentials for managed EC2/containers if enabled in config
-	if gameLift.cfg.Anywhere.Host.FleetArn == "" && gameLift.cfg.InjectFleetRoleCredentials {
-		gameLift.logger.DebugContext(gameLift.ctx, "InjectFleetRoleCredentials enabled for managed fleet; attempting to retrieve credentials")
-		// Compute role session name if not provided
+	if !isAnywhere {
+		// Compute the role session name once; reused by both the one-time fetch and the credential server.
 		roleSessionName := gameLift.cfg.RoleSessionName
 		if len(roleSessionName) == 0 {
 			roleSessionName = gameLift.runId.String()
 		}
-		if accessKey, secretKey, sessionToken, credErr := gameLift.sdk.GetFleetRoleCredentials(gameLift.ctx, gameLift.cfg.RoleArn, roleSessionName); credErr != nil {
-			gameLift.logger.WarnContext(gameLift.ctx, "failed to get fleet role credentials", "err", credErr)
-		} else {
-			hse.AwsCredentials = &events.AwsCredentials{
-				AccessKeyId:     accessKey,
-				SecretAccessKey: secretKey,
-				SessionToken:    sessionToken,
+
+		// Wire up the local credential server so the child process can request refreshed credentials on demand.
+		if gameLift.cfg.LocalCredentialServer {
+			hse.CredentialsFetcher = func(ctx context.Context) (string, string, string, time.Time, error) {
+				return gameLift.sdk.GetFleetRoleCredentials(ctx, gameLift.cfg.RoleArn, roleSessionName)
+			}
+		}
+
+		// Fetch fleet-role credentials once at session start.
+		// Required for Route53 and optionally for injecting AWS_* env vars into the child process.
+		if gameLift.cfg.UseFleetRoleCredentials {
+			gameLift.logger.DebugContext(gameLift.ctx, "UseFleetRoleCredentials enabled; retrieving fleet-role credentials")
+			if accessKey, secretKey, sessionToken, _, credErr := gameLift.sdk.GetFleetRoleCredentials(gameLift.ctx, gameLift.cfg.RoleArn, roleSessionName); credErr != nil {
+				gameLift.logger.WarnContext(gameLift.ctx, "failed to get fleet role credentials", "err", credErr)
+			} else {
+				hse.AwsCredentials = &events.AwsCredentials{
+					AccessKeyId:     accessKey,
+					SecretAccessKey: secretKey,
+					SessionToken:    sessionToken,
+				}
+				hse.InjectAwsCredentials = gameLift.cfg.InjectFleetRoleCredentials
 			}
 		}
 	} else {
