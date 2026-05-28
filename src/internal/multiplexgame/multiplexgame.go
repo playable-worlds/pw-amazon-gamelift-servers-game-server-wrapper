@@ -201,8 +201,8 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 			}
 		}
 
-		// If AWS credentials were provided in the hosting start event, set them as env vars for the child process
-		if startArgs.HostingStart != nil && startArgs.HostingStart.AwsCredentials != nil {
+		// Inject fleet-role credentials as AWS_* env vars if explicitly requested.
+		if startArgs.HostingStart != nil && startArgs.HostingStart.AwsCredentials != nil && startArgs.HostingStart.InjectAwsCredentials {
 			awsCredentials := startArgs.HostingStart.AwsCredentials
 			awsEnvVars := map[string]string{
 				"AWS_ACCESS_KEY_ID":     awsCredentials.AccessKeyId,

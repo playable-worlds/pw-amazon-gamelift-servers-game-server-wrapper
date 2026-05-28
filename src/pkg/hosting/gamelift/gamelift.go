@@ -62,7 +62,8 @@ type Config struct {
 	Orchestration              Orchestration   // Contains configuration settings for messaging the Orchestration Server
 	LogDirectory               string          // Specifies the directory for general logging
 	GameServerLogDirectory     string          // Specifies the directory for game server specific logs
-	InjectFleetRoleCredentials bool            // Toggles calling GetFleetRoleCredentials for managed fleets
+	UseFleetRoleCredentials    bool            // Calls GetFleetRoleCredentials and stores credentials for Route53 and child-process use
+	InjectFleetRoleCredentials bool            // Injects fleet-role credentials as AWS_* env vars into the child process
 	LocalCredentialServer      bool            // Starts a local HTTP credential server and injects its address into the child process
 	RoleArn                    string          // Optional: Role ARN to request credentials for
 	RoleSessionName            string          // Optional: Session name to use for assuming the role
@@ -401,7 +402,7 @@ func (gameLift *gamelift) glOnStartGameSession(gs model.GameSession) {
 	)
 
 	if !isAnywhere {
-		// Compute the role session name once; reused by both the credential server and legacy env-var injection.
+		// Compute the role session name once; reused by both the one-time fetch and the credential server.
 		roleSessionName := gameLift.cfg.RoleSessionName
 		if len(roleSessionName) == 0 {
 			roleSessionName = gameLift.runId.String()
@@ -414,9 +415,10 @@ func (gameLift *gamelift) glOnStartGameSession(gs model.GameSession) {
 			}
 		}
 
-		// Legacy path: also inject as env vars if configured (removed once CASim uses the credential server).
-		if gameLift.cfg.InjectFleetRoleCredentials {
-			gameLift.logger.DebugContext(gameLift.ctx, "InjectFleetRoleCredentials enabled; retrieving initial credentials")
+		// Fetch fleet-role credentials once at session start.
+		// Required for Route53 and optionally for injecting AWS_* env vars into the child process.
+		if gameLift.cfg.UseFleetRoleCredentials {
+			gameLift.logger.DebugContext(gameLift.ctx, "UseFleetRoleCredentials enabled; retrieving fleet-role credentials")
 			if accessKey, secretKey, sessionToken, _, credErr := gameLift.sdk.GetFleetRoleCredentials(gameLift.ctx, gameLift.cfg.RoleArn, roleSessionName); credErr != nil {
 				gameLift.logger.WarnContext(gameLift.ctx, "failed to get fleet role credentials", "err", credErr)
 			} else {
@@ -425,6 +427,7 @@ func (gameLift *gamelift) glOnStartGameSession(gs model.GameSession) {
 					SecretAccessKey: secretKey,
 					SessionToken:    sessionToken,
 				}
+				hse.InjectAwsCredentials = gameLift.cfg.InjectFleetRoleCredentials
 			}
 		}
 	} else {

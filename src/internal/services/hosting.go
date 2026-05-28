@@ -32,6 +32,7 @@ func getHosting(ctx context.Context, cfg *config.Config, logger *slog.Logger, sp
 		Orchestration:              gamelift.Orchestration(cfg.Orchestration),
 		LogDirectory:               cfg.Hosting.LogDirectory,
 		GameServerLogDirectory:     cfg.Hosting.AbsoluteGameServerLogDirectory,
+		UseFleetRoleCredentials:    cfg.Hosting.GameLift.UseFleetRoleCredentials,
 		InjectFleetRoleCredentials: cfg.Hosting.GameLift.InjectFleetRoleCredentials,
 		LocalCredentialServer:      cfg.Hosting.GameLift.LocalCredentialServer,
 		RoleArn:                    cfg.Hosting.GameLift.FleetRoleArn,
