@@ -33,6 +33,7 @@ type GameLift struct {
 	Port                       int    `mapstructure:"-" yaml:"-"`
 	QueryPort                  int    `mapstructure:"-" yaml:"-"`
 	InjectFleetRoleCredentials bool   `mapstructure:"injectFleetRoleCredentials" yaml:"injectFleetRoleCredentials"`
+	LocalCredentialServer      bool   `mapstructure:"localCredentialServer" yaml:"localCredentialServer"`
 	FleetRoleArn               string `mapstructure:"fleetRoleArn" yaml:"fleetRoleArn"`
 	FleetRoleSessionName       string `mapstructure:"fleetRoleSessionName" yaml:"fleetRoleSessionName,omitempty"`
 }

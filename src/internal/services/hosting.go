@@ -33,6 +33,7 @@ func getHosting(ctx context.Context, cfg *config.Config, logger *slog.Logger, sp
 		LogDirectory:               cfg.Hosting.LogDirectory,
 		GameServerLogDirectory:     cfg.Hosting.AbsoluteGameServerLogDirectory,
 		InjectFleetRoleCredentials: cfg.Hosting.GameLift.InjectFleetRoleCredentials,
+		LocalCredentialServer:      cfg.Hosting.GameLift.LocalCredentialServer,
 		RoleArn:                    cfg.Hosting.GameLift.FleetRoleArn,
 		RoleSessionName:            cfg.Hosting.GameLift.FleetRoleSessionName,
 	},

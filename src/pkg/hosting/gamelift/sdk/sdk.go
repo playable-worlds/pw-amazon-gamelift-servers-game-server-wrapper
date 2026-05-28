@@ -8,6 +8,7 @@ package sdk
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-go-server-sdk/v5/model/request"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-go-server-sdk/v5/server"
@@ -33,7 +34,8 @@ type GameLiftSdk interface {
 	ActivateGameSession(ctx context.Context) error
 
 	// GetFleetRoleCredentials retrieves temporary IAM credentials associated with the fleet role.
-	GetFleetRoleCredentials(ctx context.Context, roleArn string, roleSessionName string) (accessKeyId string, secretAccessKey string, sessionToken string, err error)
+	// expiration is the UTC time at which the credentials expire (derived from the SDK's millisecond epoch field).
+	GetFleetRoleCredentials(ctx context.Context, roleArn string, roleSessionName string) (accessKeyId string, secretAccessKey string, sessionToken string, expiration time.Time, err error)
 
 	// Destroy frees the server SDK for Amazon GameLift Servers from memory.
 	Destroy(ctx context.Context) error
@@ -76,16 +78,17 @@ func (sdk *Sdk) ActivateGameSession(ctx context.Context) error {
 	return server.ActivateGameSession()
 }
 
-func (sdk *Sdk) GetFleetRoleCredentials(ctx context.Context, roleArn string, roleSessionName string) (string, string, string, error) {
+func (sdk *Sdk) GetFleetRoleCredentials(ctx context.Context, roleArn string, roleSessionName string) (string, string, string, time.Time, error) {
 	sdk.logger.DebugContext(ctx, "GetFleetRoleCredentials called", "roleArn", roleArn, "roleSessionName", roleSessionName)
 	req := request.NewGetFleetRoleCredentials()
 	req.RoleArn = roleArn
 	req.RoleSessionName = roleSessionName
 	creds, err := server.GetFleetRoleCredentials(req)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", time.Time{}, err
 	}
-	return creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken, nil
+	expiration := time.UnixMilli(creds.Expiration).UTC()
+	return creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken, expiration, nil
 }
 
 func (sdk *Sdk) Destroy(ctx context.Context) error {
