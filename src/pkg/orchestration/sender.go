@@ -24,13 +24,13 @@ const gameLiftSource = "aws.gamelift"
 const authHeaderKey = "Authorization"
 
 type Sender struct {
-	requestHelper      requestHelper
-	cfg                *config.Orchestration
-	region             string
-	logger             *slog.Logger
-	gameSession        *model.GameSession
-	auth               *interserverauth.Handler
-	logDisabledOnce    sync.Once
+	requestHelper   requestHelper
+	cfg             *config.Orchestration
+	region          string
+	logger          *slog.Logger
+	gameSession     *model.GameSession
+	auth            *interserverauth.Handler
+	logDisabledOnce sync.Once
 }
 
 func NewSender(logger *slog.Logger, requestHelper requestHelper, cfg *config.Orchestration, region string) *Sender {
@@ -46,7 +46,7 @@ func NewSender(logger *slog.Logger, requestHelper requestHelper, cfg *config.Orc
 func (s *Sender) OnHostingTerminate(ctx context.Context) error {
 	if !s.cfg.EmitCustomEvents {
 		s.logDisabledOnce.Do(func() {
-			s.logger.InfoContext(ctx, "emitting events to the orchestration layer is disabled")
+			s.logger.DebugContext(ctx, "emitting events to the orchestration layer is disabled")
 		})
 		return nil
 	}
@@ -74,7 +74,7 @@ func (s *Sender) OnHostingTerminate(ctx context.Context) error {
 func (s *Sender) OnHealthCheck(ctx context.Context) error {
 	if !s.cfg.EmitCustomEvents {
 		s.logDisabledOnce.Do(func() {
-			s.logger.InfoContext(ctx, "emitting events to the orchestration layer is disabled")
+			s.logger.DebugContext(ctx, "emitting events to the orchestration layer is disabled")
 		})
 		return nil
 	}
@@ -86,7 +86,7 @@ func (s *Sender) OnHealthCheck(ctx context.Context) error {
 func (s *Sender) OnStartGameSession(ctx context.Context, gs model.GameSession) error {
 	if !s.cfg.EmitCustomEvents {
 		s.logDisabledOnce.Do(func() {
-			s.logger.InfoContext(ctx, "emitting events to the orchestration layer is disabled")
+			s.logger.DebugContext(ctx, "emitting events to the orchestration layer is disabled")
 		})
 		return nil
 	}
@@ -120,7 +120,7 @@ func (s *Sender) OnUpdateGameSession(ctx context.Context, gs model.UpdateGameSes
 	s.logger.DebugContext(ctx, "OnUpdateGameSession called", slog.Any("gameSession", gs), slog.Any("orchestration config", s.cfg))
 	if !s.cfg.EmitCustomEvents {
 		s.logDisabledOnce.Do(func() {
-			s.logger.InfoContext(ctx, "emitting events to the orchestration layer is disabled")
+			s.logger.DebugContext(ctx, "emitting events to the orchestration layer is disabled")
 		})
 		return nil
 	}
