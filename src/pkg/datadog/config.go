@@ -6,7 +6,6 @@
 package datadog
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -14,8 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"text/template"
 
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/sessiontemplate"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 )
@@ -181,17 +180,7 @@ func (s *Service) reloadAgent(ctx context.Context) error {
 
 // renderTemplate renders a template string with the provided data
 func (s *Service) renderTemplate(templateStr string, data interface{}) (string, error) {
-	tmpl, err := template.New("tag").Parse(templateStr)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to parse template")
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", errors.Wrap(err, "failed to execute template")
-	}
-
-	return buf.String(), nil
+	return sessiontemplate.Execute("tag", templateStr, data)
 }
 
 // removeTemplatedTagsFromInterface removes all tags that match our template patterns from interface slice

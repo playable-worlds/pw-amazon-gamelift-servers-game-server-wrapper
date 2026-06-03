@@ -7,6 +7,7 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/config"
@@ -21,6 +22,7 @@ type HostingStart struct {
 	FleetId                   string
 	GamePort                  int
 	GameProperties            string
+	GamePropertiesMap         map[string]string `json:"-"`
 	GameSessionData           string
 	GameSessionId             string
 	GameSessionName           string
@@ -36,6 +38,40 @@ type HostingStart struct {
 	// CredentialsFetcher is called by the local credential server to obtain refreshed fleet-role credentials.
 	// Not serialized — wired at runtime by the GameLift hosting layer.
 	CredentialsFetcher func(ctx context.Context) (accessKeyId, secretAccessKey, sessionToken string, expiration time.Time, err error) `json:"-"`
+}
+
+// EnsureGamePropertiesMap parses GameProperties into GamePropertiesMap when needed.
+func (h *HostingStart) EnsureGamePropertiesMap() error {
+	if h == nil || h.GamePropertiesMap != nil {
+		return nil
+	}
+
+	h.GamePropertiesMap = make(map[string]string)
+	if h.GameProperties == "" {
+		return nil
+	}
+
+	if err := json.Unmarshal([]byte(h.GameProperties), &h.GamePropertiesMap); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GameProperty returns a single game session property value for use in templates.
+func (h *HostingStart) GameProperty(key string) string {
+	if h == nil {
+		return ""
+	}
+
+	if err := h.EnsureGamePropertiesMap(); err != nil {
+		return ""
+	}
+	if h.GamePropertiesMap == nil {
+		return ""
+	}
+
+	return h.GamePropertiesMap[key]
 }
 
 // AwsCredentials represents temporary AWS credentials provided by GameLift fleet role.

@@ -6,11 +6,8 @@
 package multiplexgame
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -25,6 +22,7 @@ import (
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/observability"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/process"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/route53manager"
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/sessiontemplate"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/types/events"
 	"github.com/pkg/errors"
 )
@@ -189,14 +187,12 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 		}
 
 		if startArgs.GameProperties != "" {
-			passedArgs := make(map[string]string)
-			err := json.Unmarshal([]byte(startArgs.GameProperties), &passedArgs)
-			if err != nil {
+			if err := startArgs.EnsureGamePropertiesMap(); err != nil {
 				multiplexGame.logger.Error("Failed to unmarshall process args: ", "error", err)
 				return fmt.Errorf("failed to unmarshall process args: %w", err)
 			}
 
-			for k, v := range passedArgs {
+			for k, v := range startArgs.GamePropertiesMap {
 				procCfg.EnvVars[k] = v
 			}
 		}
@@ -224,18 +220,11 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 		startArgs.CliArgs = append(startArgs.CliArgs, build.DefaultArgs...)
 
 		for _, arg := range multiplexGame.cfg.BuildDetail.EnvVars {
-			val := arg.Value
-			t, err := template.New(arg.Name).Parse(val)
+			value, err := sessiontemplate.Execute(arg.Name, arg.Value, startArgs)
 			if err != nil {
-				return errors.Wrapf(err, "failed to parse arg template for %s", arg.Name)
+				return err
 			}
 
-			var b bytes.Buffer
-			if err := t.Execute(&b, startArgs); err != nil {
-				return errors.Wrapf(err, "failed to execute arg template for %s", arg.Name)
-			}
-
-			value := b.String()
 			procCfg.EnvVars[arg.Name] = value
 		}
 

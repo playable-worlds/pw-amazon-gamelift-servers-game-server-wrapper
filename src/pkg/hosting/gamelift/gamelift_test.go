@@ -314,6 +314,8 @@ func TestGamelift_Run_HappyPath_Call_StartGameSession(t *testing.T) {
 	assert.Equal(t, gameSession.Name, hostingStart.GameSessionName)
 	assert.Equal(t, gameSession.GameSessionData, hostingStart.GameSessionData)
 	assert.Equal(t, "{\"meta1\":\"alpha\",\"meta2\":\"beta\",\"meta3\":\"charlie\"}", hostingStart.GameProperties)
+	assert.Equal(t, gameSession.GameProperties, hostingStart.GamePropertiesMap)
+	assert.Equal(t, "alpha", hostingStart.GameProperty("meta1"))
 	assert.Equal(t, gameSession.MatchmakerData, hostingStart.MatchmakerData)
 	assert.True(t, gameLiftMockHelper.gameLiftSdk.ActivateGameSessionCalled)
 	logString := gameLiftMockHelper.logBuffer.String()
