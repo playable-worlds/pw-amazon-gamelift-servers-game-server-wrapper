@@ -6,14 +6,13 @@
 package args
 
 import (
-	"bytes"
 	"cmp"
 	"slices"
-	"text/template"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
 	pkgConfig "github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/config"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/game"
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/sessiontemplate"
 	"github.com/pkg/errors"
 )
 
@@ -112,6 +111,14 @@ type StartArgs struct {
 	*game.StartArgs
 }
 
+func (session *StartArgs) PrepareSessionTemplateData() error {
+	if session != nil && session.StartArgs != nil && session.HostingStart != nil {
+		return session.HostingStart.EnsureGamePropertiesMap()
+	}
+
+	return nil
+}
+
 // Get generates the final command-line arguments for a game session.
 //
 // Parameters:
@@ -133,18 +140,10 @@ func (generator *generator) Get(gsa *game.StartArgs) ([]string, error) {
 	cmdArgs := make([]string, 0)
 	for _, arg := range args {
 		if len(arg.Value) > 0 {
-			val := arg.Value
-			t, err := template.New(arg.Name).Parse(val)
+			value, err := sessiontemplate.Execute(arg.Name, arg.Value, session)
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to parse arg template for %s", arg.Name)
+				return nil, err
 			}
-
-			var b bytes.Buffer
-			if err := t.Execute(&b, session); err != nil {
-				return nil, errors.Wrapf(err, "failed to execute arg template for %s", arg.Name)
-			}
-
-			value := b.String()
 
 			cmdArgs = append(cmdArgs, arg.Name, value)
 		} else {

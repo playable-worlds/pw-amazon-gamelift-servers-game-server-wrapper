@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -369,6 +370,7 @@ func (gameLift *gamelift) glOnStartGameSession(gs model.GameSession) {
 		FleetId:                   gs.FleetID,
 		GamePort:                  gs.Port,
 		GameProperties:            gameProperties,
+		GamePropertiesMap:         maps.Clone(gs.GameProperties),
 		GameSessionData:           gs.GameSessionData,
 		GameSessionId:             gs.GameSessionID,
 		GameSessionName:           gs.Name,

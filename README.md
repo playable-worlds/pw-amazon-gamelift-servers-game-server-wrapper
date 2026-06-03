@@ -656,6 +656,7 @@ DNSName                    # The DNS identifier assigned to the instance that is
 FleetId                    # A unique identifier for the fleet that the game session is running on.
 GamePort                   # The port number for the game session. To connect to a GameLift game server, an app needs both the IP address and port number.
 GameProperties             # A set of custom properties for a game session.  It is in JSON syntax, formatted as a string.
+GameProperty "key"         # A single game session property value. Example: {{.GameProperty "mapName"}}
 GameSessionData            # A set of custom game session properties, formatted as a single string value.
 GameSessionId              # A unique identifier for the game session.
 GameSessionName            # A descriptive label that is associated with a game session. Session names do not need to be unique.
@@ -680,6 +681,9 @@ Example of configuration of arguments:
         - arg: "--gameSessionId"
           val: "{{.GameSessionId}}"
           pos: 2
+        - arg: "--map"
+          val: '{{.GameProperty "mapName"}}'
+          pos: 3
 ```
 
 ## Metrics
