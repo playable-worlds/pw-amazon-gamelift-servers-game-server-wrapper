@@ -17,6 +17,7 @@
   - [Example Output](#example-output)
   - [Requirements](#requirements)
   - [Troubleshooting](#troubleshooting)
+- [OpenTelemetry Collector Integration](#opentelemetry-collector-integration)
 - [Appendix](#appendix)
   - [Game Server Arguments](#game-server-arguments)
   - [Server SDK integration comparison against game server wrapper](#server-sdk-integration-comparison-against-game-server-wrapper)
@@ -644,6 +645,60 @@ The wrapper needs sudo privileges to restart the datadog agent.
 ```bash
 # Add gl-user-server to sudoers for datadog agent restart only
 echo "gl-user-server ALL=(ALL) NOPASSWD: /bin/systemctl restart datadog-agent" | sudo tee /etc/sudoers.d/gamelift-wrapper
+```
+
+# OpenTelemetry Collector Integration
+
+The game server wrapper can update an `otelcol-contrib` configuration file with dynamic resource attributes when game sessions start, mirroring the Datadog integration.
+
+## Configuration
+
+Add the following to your `config.yaml`:
+
+```yaml
+otelcol:
+  enabled: true
+  config-path: "/etc/otelcol-contrib/config.yaml"
+  processor-name: "attributes/gamesession"  # optional, this is the default
+  tags:
+    session_name: "{{.GameSessionName}}"
+    fleet_id: "{{.FleetId}}"
+    game_session_id: "{{.GameSessionId}}"
+```
+
+### Configuration Options
+
+- `enabled`: Enable or disable otelcol-contrib integration (default: false)
+- `config-path`: Path to the otelcol-contrib configuration file (default: `/etc/otelcol-contrib/config.yaml`)
+- `processor-name`: Name of the attributes processor to update (default: `attributes/gamesession`)
+- `tags`: Map of resource attribute keys to template strings (same template variables as Datadog)
+
+## Example Output
+
+When a game session starts, the wrapper updates the configured attributes processor and ensures it is referenced in existing pipelines:
+
+```yaml
+processors:
+  attributes/gamesession:
+    actions:
+      - key: session_name
+        value: my-game-session-123
+        action: upsert
+      - key: fleet_id
+        value: fleet-8a8e55eb-6607-4eb3-9031-eed48907d5a4
+        action: upsert
+```
+
+The collector is restarted with `sudo systemctl restart otelcol-contrib` after each update.
+
+## Requirements
+
+- `otelcol-contrib` must be installed and managed by systemd
+- The wrapper must have write permissions to the collector configuration file
+- The wrapper must have passwordless sudo for `systemctl restart otelcol-contrib`
+
+```bash
+echo "gl-user-server ALL=(ALL) NOPASSWD: /bin/systemctl restart otelcol-contrib" | sudo tee -a /etc/sudoers.d/gamelift-wrapper
 ```
 
 # Appendix

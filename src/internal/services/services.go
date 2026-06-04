@@ -13,6 +13,7 @@ import (
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/datadog"
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/otelcol"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/logging"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/manager"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/observability"
@@ -25,6 +26,7 @@ type Services struct {
 	Runner  *runner.Runner
 	Spanner observability.Spanner
 	Datadog *datadog.Service
+	Otelcol *otelcol.Service
 }
 
 // Default initializes a new Services instance with all required components.
@@ -55,11 +57,19 @@ func Default(ctx context.Context, cfg *config.Config, logger *slog.Logger, obs *
 		logger.DebugContext(ctx, "Datadog service disabled")
 	}
 
+	var otelcolService *otelcol.Service
+	if cfg.Otelcol.Enabled {
+		logger.DebugContext(ctx, "Initializing otelcol-contrib service")
+		otelcolService = otelcol.New(cfg.Otelcol.ConfigPath, cfg.Otelcol.ProcessorName, cfg.Otelcol.Tags, logger)
+	} else {
+		logger.DebugContext(ctx, "otelcol-contrib service disabled")
+	}
+
 	logger.DebugContext(ctx, "Creating game manager instance")
 	managerInstance := manager.New(&manager.Config{
 		QuickSave:       cfg.Hosting.QuickSave,
 		QuickSaveApiKey: cfg.Hosting.QuickSaveApiKey,
-	}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave, cfg.Hosting.QuickSaveApiKey), datadogService)
+	}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave, cfg.Hosting.QuickSaveApiKey), datadogService, otelcolService)
 
 	logger.DebugContext(ctx, "Creating game runner instance")
 	runnerInstance := runner.New("runner", managerInstance, logger, obs.Spanner)
@@ -69,6 +79,7 @@ func Default(ctx context.Context, cfg *config.Config, logger *slog.Logger, obs *
 		Runner:  runnerInstance,
 		Spanner: obs.Spanner,
 		Datadog: datadogService,
+		Otelcol: otelcolService,
 	}
 
 	logger.DebugContext(ctx, "Game server wrapper services initialized successfully")
