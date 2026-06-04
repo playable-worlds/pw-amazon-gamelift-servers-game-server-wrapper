@@ -10,6 +10,7 @@ import (
 	"log/slog"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/datadog"
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/otelcol"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/game"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/hosting"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/observability"
@@ -39,6 +40,7 @@ type service struct {
 	gameMeta *game.InitMeta
 	initMeta *hosting.InitMeta
 	datadog  *datadog.Service
+	otelcol  *otelcol.Service
 }
 
 func (service *service) onHostingStart(ctx context.Context, h *events.HostingStart, end <-chan error) error {
@@ -51,6 +53,13 @@ func (service *service) onHostingStart(ctx context.Context, h *events.HostingSta
 		if err := service.datadog.UpdateTags(ctx, h); err != nil {
 			service.logger.WarnContext(ctx, "Failed to update datadog configuration", "error", err)
 			// Don't fail the hosting start if datadog update fails
+		}
+	}
+
+	if service.otelcol != nil {
+		service.logger.DebugContext(ctx, "Updating otelcol-contrib configuration with templated tags", "event", h)
+		if err := service.otelcol.UpdateTags(ctx, h); err != nil {
+			service.logger.WarnContext(ctx, "Failed to update otelcol-contrib configuration", "error", err)
 		}
 	}
 
@@ -172,7 +181,7 @@ func (service *service) Close(ctx context.Context) error {
 	return err
 }
 
-func New(cfg *Config, g game.Server, hosting hosting.Service, logger *slog.Logger, spanner observability.Spanner, harness Harness, datadog *datadog.Service) *service {
+func New(cfg *Config, g game.Server, hosting hosting.Service, logger *slog.Logger, spanner observability.Spanner, harness Harness, datadog *datadog.Service, otelcol *otelcol.Service) *service {
 
 	service := &service{
 		harness: harness,
@@ -181,6 +190,7 @@ func New(cfg *Config, g game.Server, hosting hosting.Service, logger *slog.Logge
 		spanner: spanner,
 		cfg:     cfg,
 		datadog: datadog,
+		otelcol: otelcol,
 	}
 
 	return service

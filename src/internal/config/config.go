@@ -28,6 +28,7 @@ type Config struct {
 	Orchestration Orchestration        `mapstructure:"orchestration" yaml:"orchestration"`
 	Hosting       Hosting              `mapstructure:"hosting" yaml:"hosting"`
 	Datadog       Datadog              `mapstructure:"datadog" yaml:"datadog,omitempty"`
+	Otelcol       Otelcol              `mapstructure:"otelcol" yaml:"otelcol,omitempty"`
 }
 
 // ConfigWrapper provides a wrapper configuration structure for additional
@@ -48,6 +49,7 @@ type ConfigWrapper struct {
 	QuickSave                  bool              `mapstructure:"quick-save" yaml:"quick-save"`
 	QuickSaveApiKey            string            `mapstructure:"quick-save-api-key" yaml:"quick-save-api-key"`
 	Datadog                    Datadog           `mapstructure:"datadog" yaml:"datadog,omitempty"`
+	Otelcol                    Otelcol           `mapstructure:"otelcol" yaml:"otelcol,omitempty"`
 }
 
 // LogConfig defines logging-specific configuration options.
@@ -289,6 +291,12 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 		ConfigPath: configWrapper.Datadog.ConfigPath,
 		Tags:       configWrapper.Datadog.Tags,
 	}
+	cfg.Otelcol = Otelcol{
+		Enabled:       configWrapper.Otelcol.Enabled,
+		ConfigPath:    configWrapper.Otelcol.ConfigPath,
+		ProcessorName: configWrapper.Otelcol.ProcessorName,
+		Tags:          configWrapper.Otelcol.Tags,
+	}
 
 	return nil
 }
@@ -413,4 +421,12 @@ type Datadog struct {
 	Enabled    bool              `mapstructure:"enabled" yaml:"enabled"`
 	ConfigPath string            `mapstructure:"config-path" yaml:"config-path"`
 	Tags       map[string]string `mapstructure:"tags" yaml:"tags"`
+}
+
+// Otelcol defines the configuration for otelcol-contrib integration.
+type Otelcol struct {
+	Enabled       bool              `mapstructure:"enabled" yaml:"enabled"`
+	ConfigPath    string            `mapstructure:"config-path" yaml:"config-path"`
+	ProcessorName string            `mapstructure:"processor-name" yaml:"processor-name"`
+	Tags          map[string]string `mapstructure:"tags" yaml:"tags"`
 }
