@@ -9,6 +9,10 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -33,10 +37,10 @@ type HarnessTestHelper struct {
 }
 
 func CreateHarnessTestHelper(duration time.Duration) HarnessTestHelper {
-	return CreateHarnessTestHelperWithQuickSave(duration, false)
+	return CreateHarnessTestHelperWithQuickSave(duration, false, "")
 }
 
-func CreateHarnessTestHelperWithQuickSave(duration time.Duration, quickSaveEnabled bool) HarnessTestHelper {
+func CreateHarnessTestHelperWithQuickSave(duration time.Duration, quickSaveEnabled bool, quickSaveWait string) HarnessTestHelper {
 	logBuffer := bytes.Buffer{}
 	ctx, _ := context.WithTimeout(context.Background(), duration)
 	logger := slog.New(slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{
@@ -45,7 +49,7 @@ func CreateHarnessTestHelperWithQuickSave(duration time.Duration, quickSaveEnabl
 	spannerMock := mocks.SpannerMock{}
 	gameService := &GameServiceMock{}
 
-	harness := NewHarness(gameService, logger, &spannerMock, quickSaveEnabled, "test-api-key")
+	harness := NewHarness(gameService, logger, &spannerMock, quickSaveEnabled, "test-api-key", quickSaveWait)
 	return HarnessTestHelper{
 		Logger:      logger,
 		LogBuffer:   &logBuffer,
@@ -279,7 +283,7 @@ func Test_Harness_Close_HappyPath(t *testing.T) {
 
 func Test_Harness_QuickSave_Uses_GameSessionName(t *testing.T) {
 	//arrange
-	harnessTestHelper := CreateHarnessTestHelperWithQuickSave(time.Second * 5, true)
+	harnessTestHelper := CreateHarnessTestHelperWithQuickSave(time.Second*5, true, "0s")
 
 	// Set up a hosting start event with a specific GameSessionName
 	testGameSessionName := "79315e7a-02f5-4b86-8b3d-88ffdcf3a081"
@@ -300,4 +304,42 @@ func Test_Harness_QuickSave_Uses_GameSessionName(t *testing.T) {
 	logBuffer := harnessTestHelper.LogBuffer.String()
 	// Since we don't have a real HTTP server, quicksave will fail, but we can verify it was attempted
 	assert.Contains(t, logBuffer, "Failed to perform quicksave")
+}
+
+func Test_Harness_QuickSave_Default_Wait_Logged(t *testing.T) {
+	harnessTestHelper := CreateHarnessTestHelperWithQuickSave(time.Second*5, true, "")
+
+	logBuffer := harnessTestHelper.LogBuffer.String()
+	assert.Contains(t, logBuffer, "No quick-save-wait configured, using default")
+	assert.Contains(t, logBuffer, "1m0s")
+}
+
+func Test_Harness_QuickSave_Waits_Before_Shutdown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, portStr, err := net.SplitHostPort(server.Listener.Addr().String())
+	assert.Nil(t, err)
+	port, err := strconv.Atoi(portStr)
+	assert.Nil(t, err)
+
+	harnessTestHelper := CreateHarnessTestHelperWithQuickSave(time.Second*10, true, "300ms")
+	harnessTestHelper.Harness.hostingStartEvent = &events.HostingStart{
+		GameSessionName: "79315e7a-02f5-4b86-8b3d-88ffdcf3a081",
+		GamePort:        port,
+	}
+
+	start := time.Now()
+	err = harnessTestHelper.Harness.Close(harnessTestHelper.Ctx)
+	elapsed := time.Since(start)
+
+	assert.Nil(t, err)
+	assert.True(t, harnessTestHelper.GameService.StopCalled)
+	assert.GreaterOrEqual(t, elapsed, 300*time.Millisecond)
+
+	logBuffer := harnessTestHelper.LogBuffer.String()
+	assert.Contains(t, logBuffer, "Quicksave completed successfully")
+	assert.Contains(t, logBuffer, "waiting after quicksave before shutdown")
 }

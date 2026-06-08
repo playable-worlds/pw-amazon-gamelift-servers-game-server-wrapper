@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/game"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/observability"
@@ -34,8 +35,9 @@ type harness struct {
 	game              game.Server
 	spanner           observability.Spanner
 	hostingStartEvent *events.HostingStart
-	quickSaveEnabled  bool
-	quickSaveApiKey   string
+	quickSaveEnabled   bool
+	quickSaveApiKey    string
+	quickSaveWait      time.Duration
 	quickSaveAttempted bool
 }
 
@@ -211,6 +213,11 @@ func (harness *harness) performQuickSave(ctx context.Context) {
 		} else {
 			harness.logger.DebugContext(ctx, "Quicksave completed successfully")
 		}
+
+		if harness.quickSaveWait > 0 {
+			harness.logger.DebugContext(ctx, "waiting after quicksave before shutdown", "wait", harness.quickSaveWait)
+			time.Sleep(harness.quickSaveWait)
+		}
 	}
 }
 
@@ -248,10 +255,19 @@ func (harness *harness) Close(ctx context.Context) error {
 //   - spanner: Observability component for monitoring and tracing
 //   - quickSaveEnabled: Whether quicksave functionality is enabled
 //   - quickSaveApiKey: API key for quicksave requests
+//   - quickSaveWait: Duration string to wait after quicksave before allowing shutdown (e.g. "30s")
 //
 // Returns:
 //   - *harness: A new harness instance configured with the provided components
-func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spanner, quickSaveEnabled bool, quickSaveApiKey string) *harness {
+func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spanner, quickSaveEnabled bool, quickSaveApiKey string, quickSaveWait string) *harness {
+	wait, usedDefault := parseQuickSaveWait(quickSaveWait)
+	if usedDefault && quickSaveEnabled {
+		logger.Info("No quick-save-wait configured, using default", "quickSaveWait", wait)
+	}
+	if quickSaveWait != "" && wait == 0 {
+		logger.Warn("Invalid quick-save-wait duration, shutdown will not be delayed after quicksave", "quickSaveWait", quickSaveWait)
+	}
+
 	b := &harness{
 		hostingTerminate: make(chan *events.HostingTerminate),
 		hostingStart:     make(chan *events.HostingStart),
@@ -260,6 +276,7 @@ func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spa
 		spanner:          spanner,
 		quickSaveEnabled: quickSaveEnabled,
 		quickSaveApiKey:  quickSaveApiKey,
+		quickSaveWait:    wait,
 	}
 
 	return b

@@ -13,6 +13,21 @@ type QuickSave struct {
 	ZoneId string `json:"zone_id"`
 }
 
+const defaultQuickSaveWait = 60 * time.Second
+
+func parseQuickSaveWait(wait string) (time.Duration, bool) {
+	if wait == "" {
+		return defaultQuickSaveWait, true
+	}
+
+	d, err := time.ParseDuration(wait)
+	if err != nil {
+		return 0, false
+	}
+
+	return d, false
+}
+
 func quicksave(ctx context.Context, zoneid string, port int, apiKey string) error {
 	// Create a timeout context for quicksave to ensure it doesn't hang indefinitely
 	quicksaveCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
