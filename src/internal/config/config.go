@@ -48,6 +48,9 @@ type ConfigWrapper struct {
 	FleetRoleSessionName       string            `mapstructure:"fleet-role-session-name" yaml:"fleet-role-session-name"`
 	QuickSave                  bool              `mapstructure:"quick-save" yaml:"quick-save"`
 	QuickSaveApiKey            string            `mapstructure:"quick-save-api-key" yaml:"quick-save-api-key"`
+	QuickSavePort              int               `mapstructure:"quick-save-port" yaml:"quick-save-port"`
+	QuickSavePath              string            `mapstructure:"quick-save-path" yaml:"quick-save-path"`
+	QuickSaveQuery             string            `mapstructure:"quick-save-query" yaml:"quick-save-query"`
 	QuickSaveWait              string            `mapstructure:"quick-save-wait" yaml:"quick-save-wait"`
 	Datadog                    Datadog           `mapstructure:"datadog" yaml:"datadog,omitempty"`
 	Otelcol                    Otelcol           `mapstructure:"otelcol" yaml:"otelcol,omitempty"`
@@ -286,6 +289,9 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 		},
 		QuickSave:       configWrapper.QuickSave,
 		QuickSaveApiKey: configWrapper.QuickSaveApiKey,
+		QuickSavePort:   configWrapper.QuickSavePort,
+		QuickSavePath:   configWrapper.QuickSavePath,
+		QuickSaveQuery:  configWrapper.QuickSaveQuery,
 		QuickSaveWait:   configWrapper.QuickSaveWait,
 	}
 	cfg.Datadog = Datadog{
@@ -360,6 +366,9 @@ type Hosting struct {
 	GameLift         config.GameLift `mapstructure:"gamelift" yaml:"gameLift"`
 	QuickSave        bool            `mapstructure:"quickSave" yaml:"quickSave"`
 	QuickSaveApiKey  string          `mapstructure:"quickSaveApiKey" yaml:"quickSaveApiKey"`
+	QuickSavePort    int             `mapstructure:"quickSavePort" yaml:"quickSavePort"`
+	QuickSavePath    string          `mapstructure:"quickSavePath" yaml:"quickSavePath"`
+	QuickSaveQuery   string          `mapstructure:"quickSaveQuery" yaml:"quickSaveQuery"`
 	QuickSaveWait    string          `mapstructure:"quickSaveWait" yaml:"quickSaveWait"`
 }
 

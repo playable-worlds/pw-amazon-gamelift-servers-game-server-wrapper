@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -13,7 +15,30 @@ type QuickSave struct {
 	ZoneId string `json:"zone_id"`
 }
 
-const defaultQuickSaveWait = 60 * time.Second
+const (
+	defaultQuickSaveWait  = 60 * time.Second
+	defaultQuickSavePath  = "/quicksave"
+)
+
+func buildQuickSaveURL(port int, path string, query string) string {
+	if path == "" {
+		path = defaultQuickSavePath
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	u := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("localhost:%d", port),
+		Path:   path,
+	}
+	if query != "" {
+		u.RawQuery = strings.TrimPrefix(query, "?")
+	}
+
+	return u.String()
+}
 
 func parseQuickSaveWait(wait string) (time.Duration, bool) {
 	if wait == "" {
@@ -28,12 +53,12 @@ func parseQuickSaveWait(wait string) (time.Duration, bool) {
 	return d, false
 }
 
-func quicksave(ctx context.Context, zoneid string, port int, apiKey string) error {
+func quicksave(ctx context.Context, zoneid string, port int, path string, query string, apiKey string) error {
 	// Create a timeout context for quicksave to ensure it doesn't hang indefinitely
 	quicksaveCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("http://localhost:%d/quicksave", port)
+	url := buildQuickSaveURL(port, path, query)
 
 	payload := QuickSave{ZoneId: zoneid}
 	body, err := json.Marshal(payload)

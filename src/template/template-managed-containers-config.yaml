@@ -13,6 +13,9 @@ readiness:
 
 quick-save: false  # Set to true to enable quicksave functionality on game server termination
 quick-save-api-key: ""  # API key for quicksave requests (optional)
+quick-save-port: 0  # HTTP port for quicksave requests (defaults to the game session port when 0)
+quick-save-path: ""  # HTTP path for quicksave requests (defaults to /quicksave)
+quick-save-query: ""  # Optional query string for quicksave requests (without leading ?)
 quick-save-wait: ""  # Duration to wait after quicksave before shutdown (defaults to 60s); use "0s" to disable
 
 orchestration:
