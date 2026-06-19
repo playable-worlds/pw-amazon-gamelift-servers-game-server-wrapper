@@ -13,7 +13,8 @@ readiness:
   endpoint: "http://127.0.0.1:8080/health"
 
 quick-save: false  # Set to true to enable quicksave functionality on game server termination
-quick-save-api-key: ""  # API key for quicksave requests (optional)
+quick-save-use-inter-server-auth: false  # Use orchestration inter-server auth instead of quick-save-api-key
+quick-save-api-key: ""  # API key for quicksave requests (optional, ignored when quick-save-use-inter-server-auth is true)
 quick-save-port: 0  # HTTP port for quicksave requests (defaults to the game session port when 0)
 quick-save-path: ""  # HTTP path for quicksave requests (defaults to /quicksave)
 quick-save-query: ""  # Optional query string for quicksave requests (without leading ?)

@@ -8,16 +8,19 @@ package services
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/runner"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/datadog"
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/helpers"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/otelcol"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/logging"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/manager"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/observability"
 	"github.com/pkg/errors"
+	"interserverauth"
 )
 
 // Services defines the components required for running the game server wrapper
@@ -66,14 +69,29 @@ func Default(ctx context.Context, cfg *config.Config, logger *slog.Logger, obs *
 	}
 
 	logger.DebugContext(ctx, "Creating game manager instance")
+	var quickSaveAuth manager.QuickSaveAuth
+	if cfg.Hosting.QuickSaveUseInterServerAuth {
+		quickSaveAuth = &quickSaveInterServerAuth{
+			auth: interserverauth.New(
+				cfg.Orchestration.AuthHeaderPrefix,
+				cfg.Orchestration.ClientId,
+				cfg.Orchestration.ClientSecret,
+				cfg.Orchestration.GetTokenUrl,
+				helpers.NewHttpRequestHandler(http.DefaultClient, logger),
+				logger,
+			),
+		}
+	}
+
 	managerInstance := manager.New(&manager.Config{
-		QuickSave:       cfg.Hosting.QuickSave,
-		QuickSaveApiKey: cfg.Hosting.QuickSaveApiKey,
-		QuickSavePort:   cfg.Hosting.QuickSavePort,
-		QuickSavePath:   cfg.Hosting.QuickSavePath,
-		QuickSaveQuery:  cfg.Hosting.QuickSaveQuery,
-		QuickSaveWait:   cfg.Hosting.QuickSaveWait,
-	}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave, cfg.Hosting.QuickSaveApiKey, cfg.Hosting.QuickSavePort, cfg.Hosting.QuickSavePath, cfg.Hosting.QuickSaveQuery, cfg.Hosting.QuickSaveWait), datadogService, otelcolService)
+		QuickSave:                   cfg.Hosting.QuickSave,
+		QuickSaveUseInterServerAuth: cfg.Hosting.QuickSaveUseInterServerAuth,
+		QuickSaveApiKey:             cfg.Hosting.QuickSaveApiKey,
+		QuickSavePort:               cfg.Hosting.QuickSavePort,
+		QuickSavePath:               cfg.Hosting.QuickSavePath,
+		QuickSaveQuery:              cfg.Hosting.QuickSaveQuery,
+		QuickSaveWait:               cfg.Hosting.QuickSaveWait,
+	}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave, quickSaveAuth, cfg.Hosting.QuickSaveApiKey, cfg.Hosting.QuickSavePort, cfg.Hosting.QuickSavePath, cfg.Hosting.QuickSaveQuery, cfg.Hosting.QuickSaveWait), datadogService, otelcolService)
 
 	logger.DebugContext(ctx, "Creating game runner instance")
 	runnerInstance := runner.New("runner", managerInstance, logger, obs.Spanner)

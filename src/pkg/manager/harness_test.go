@@ -49,7 +49,7 @@ func CreateHarnessTestHelperWithQuickSave(duration time.Duration, quickSaveEnabl
 	spannerMock := mocks.SpannerMock{}
 	gameService := &GameServiceMock{}
 
-	harness := NewHarness(gameService, logger, &spannerMock, quickSaveEnabled, "test-api-key", 0, "", "", quickSaveWait)
+	harness := NewHarness(gameService, logger, &spannerMock, quickSaveEnabled, nil, "test-api-key", 0, "", "", quickSaveWait)
 	return HarnessTestHelper{
 		Logger:      logger,
 		LogBuffer:   &logBuffer,
@@ -312,6 +312,36 @@ func Test_Harness_QuickSave_Default_Wait_Logged(t *testing.T) {
 	logBuffer := harnessTestHelper.LogBuffer.String()
 	assert.Contains(t, logBuffer, "No quick-save-wait configured, using default")
 	assert.Contains(t, logBuffer, "1m0s")
+}
+
+func Test_Harness_QuickSave_Uses_Inter_Server_Auth(t *testing.T) {
+	var gotAuth string
+	var gotAPIKey string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAPIKey = r.Header.Get("x-api-key")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, portStr, err := net.SplitHostPort(server.Listener.Addr().String())
+	assert.Nil(t, err)
+	port, err := strconv.Atoi(portStr)
+	assert.Nil(t, err)
+
+	harnessTestHelper := CreateHarnessTestHelperWithQuickSave(time.Second*5, true, "0s")
+	harnessTestHelper.Harness.quickSaveAuth = stubQuickSaveAuth{header: "Bearer test-token"}
+	harnessTestHelper.Harness.hostingStartEvent = &events.HostingStart{
+		GameSessionName: "79315e7a-02f5-4b86-8b3d-88ffdcf3a081",
+		GamePort:        port,
+	}
+
+	err = harnessTestHelper.Harness.Close(harnessTestHelper.Ctx)
+
+	assert.Nil(t, err)
+	assert.Equal(t, "Bearer test-token", gotAuth)
+	assert.Empty(t, gotAPIKey)
 }
 
 func Test_Harness_QuickSave_Uses_Configured_Port(t *testing.T) {

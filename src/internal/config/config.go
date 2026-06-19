@@ -47,6 +47,7 @@ type ConfigWrapper struct {
 	FleetRoleArn               string            `mapstructure:"fleet-role-arn" yaml:"fleet-role-arn"`
 	FleetRoleSessionName       string            `mapstructure:"fleet-role-session-name" yaml:"fleet-role-session-name"`
 	QuickSave                  bool              `mapstructure:"quick-save" yaml:"quick-save"`
+	QuickSaveUseInterServerAuth bool             `mapstructure:"quick-save-use-inter-server-auth" yaml:"quick-save-use-inter-server-auth"`
 	QuickSaveApiKey            string            `mapstructure:"quick-save-api-key" yaml:"quick-save-api-key"`
 	QuickSavePort              int               `mapstructure:"quick-save-port" yaml:"quick-save-port"`
 	QuickSavePath              string            `mapstructure:"quick-save-path" yaml:"quick-save-path"`
@@ -287,8 +288,9 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 			FleetRoleArn:               configWrapper.FleetRoleArn,
 			FleetRoleSessionName:       configWrapper.FleetRoleSessionName,
 		},
-		QuickSave:       configWrapper.QuickSave,
-		QuickSaveApiKey: configWrapper.QuickSaveApiKey,
+		QuickSave:                   configWrapper.QuickSave,
+		QuickSaveUseInterServerAuth: configWrapper.QuickSaveUseInterServerAuth,
+		QuickSaveApiKey:             configWrapper.QuickSaveApiKey,
 		QuickSavePort:   configWrapper.QuickSavePort,
 		QuickSavePath:   configWrapper.QuickSavePath,
 		QuickSaveQuery:  configWrapper.QuickSaveQuery,
@@ -364,8 +366,9 @@ type Ports struct {
 type Hosting struct {
 	config.Hosting   `mapstructure:",squash"`
 	GameLift         config.GameLift `mapstructure:"gamelift" yaml:"gameLift"`
-	QuickSave        bool            `mapstructure:"quickSave" yaml:"quickSave"`
-	QuickSaveApiKey  string          `mapstructure:"quickSaveApiKey" yaml:"quickSaveApiKey"`
+	QuickSave                   bool            `mapstructure:"quickSave" yaml:"quickSave"`
+	QuickSaveUseInterServerAuth bool            `mapstructure:"quickSaveUseInterServerAuth" yaml:"quickSaveUseInterServerAuth"`
+	QuickSaveApiKey             string          `mapstructure:"quickSaveApiKey" yaml:"quickSaveApiKey"`
 	QuickSavePort    int             `mapstructure:"quickSavePort" yaml:"quickSavePort"`
 	QuickSavePath    string          `mapstructure:"quickSavePath" yaml:"quickSavePath"`
 	QuickSaveQuery   string          `mapstructure:"quickSaveQuery" yaml:"quickSaveQuery"`

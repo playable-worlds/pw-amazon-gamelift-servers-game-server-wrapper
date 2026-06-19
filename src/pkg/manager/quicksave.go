@@ -15,6 +15,11 @@ type QuickSave struct {
 	ZoneId string `json:"zone_id"`
 }
 
+// QuickSaveAuth provides authorization headers for quicksave requests.
+type QuickSaveAuth interface {
+	AuthorizationHeader(ctx context.Context) (string, error)
+}
+
 const (
 	defaultQuickSaveWait  = 60 * time.Second
 	defaultQuickSavePath  = "/quicksave"
@@ -53,7 +58,7 @@ func parseQuickSaveWait(wait string) (time.Duration, bool) {
 	return d, false
 }
 
-func quicksave(ctx context.Context, zoneid string, port int, path string, query string, apiKey string) error {
+func quicksave(ctx context.Context, zoneid string, port int, path string, query string, auth QuickSaveAuth, apiKey string) error {
 	// Create a timeout context for quicksave to ensure it doesn't hang indefinitely
 	quicksaveCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -71,7 +76,13 @@ func quicksave(ctx context.Context, zoneid string, port int, path string, query 
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
+	if auth != nil {
+		authHeader, err := auth.AuthorizationHeader(quicksaveCtx)
+		if err != nil {
+			return fmt.Errorf("failed to acquire auth token: %w", err)
+		}
+		req.Header.Set("Authorization", authHeader)
+	} else if apiKey != "" {
 		req.Header.Set("x-api-key", apiKey)
 	}
 
