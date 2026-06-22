@@ -90,8 +90,9 @@ func Default(ctx context.Context, cfg *config.Config, logger *slog.Logger, obs *
 		QuickSavePort:               cfg.Hosting.QuickSavePort,
 		QuickSavePath:               cfg.Hosting.QuickSavePath,
 		QuickSaveQuery:              cfg.Hosting.QuickSaveQuery,
+		QuickSaveMethod:             cfg.Hosting.QuickSaveMethod,
 		QuickSaveWait:               cfg.Hosting.QuickSaveWait,
-	}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave, quickSaveAuth, cfg.Hosting.QuickSaveApiKey, cfg.Hosting.QuickSavePort, cfg.Hosting.QuickSavePath, cfg.Hosting.QuickSaveQuery, cfg.Hosting.QuickSaveWait), datadogService, otelcolService)
+	}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave, quickSaveAuth, cfg.Hosting.QuickSaveApiKey, cfg.Hosting.QuickSavePort, cfg.Hosting.QuickSavePath, cfg.Hosting.QuickSaveQuery, cfg.Hosting.QuickSaveMethod, cfg.Hosting.QuickSaveWait), datadogService, otelcolService)
 
 	logger.DebugContext(ctx, "Creating game runner instance")
 	runnerInstance := runner.New("runner", managerInstance, logger, obs.Spanner)

@@ -33,6 +33,7 @@ type Config struct {
 	QuickSavePort   int
 	QuickSavePath   string
 	QuickSaveQuery  string
+	QuickSaveMethod string
 	QuickSaveWait   string
 }
 

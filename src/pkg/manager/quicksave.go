@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,8 +22,9 @@ type QuickSaveAuth interface {
 }
 
 const (
-	defaultQuickSaveWait  = 60 * time.Second
-	defaultQuickSavePath  = "/quicksave"
+	defaultQuickSaveWait   = 60 * time.Second
+	defaultQuickSavePath   = "/quicksave"
+	defaultQuickSaveMethod = http.MethodPost
 )
 
 func buildQuickSaveURL(port int, path string, query string) string {
@@ -45,6 +47,24 @@ func buildQuickSaveURL(port int, path string, query string) string {
 	return u.String()
 }
 
+func normalizeQuickSaveMethod(method string) string {
+	switch strings.ToUpper(method) {
+	case http.MethodGet:
+		return http.MethodGet
+	default:
+		return defaultQuickSaveMethod
+	}
+}
+
+func mergeQuickSaveQuery(query string, zoneID string) string {
+	values, err := url.ParseQuery(strings.TrimPrefix(query, "?"))
+	if err != nil {
+		values = url.Values{}
+	}
+	values.Set("zone_id", zoneID)
+	return values.Encode()
+}
+
 func parseQuickSaveWait(wait string) (time.Duration, bool) {
 	if wait == "" {
 		return defaultQuickSaveWait, true
@@ -58,24 +78,36 @@ func parseQuickSaveWait(wait string) (time.Duration, bool) {
 	return d, false
 }
 
-func quicksave(ctx context.Context, zoneid string, port int, path string, query string, auth QuickSaveAuth, apiKey string) error {
+func quicksave(ctx context.Context, zoneid string, port int, path string, query string, method string, auth QuickSaveAuth, apiKey string) error {
 	// Create a timeout context for quicksave to ensure it doesn't hang indefinitely
 	quicksaveCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	url := buildQuickSaveURL(port, path, query)
-
-	payload := QuickSave{ZoneId: zoneid}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal payload: %w", err)
+	method = normalizeQuickSaveMethod(method)
+	requestQuery := query
+	if method == http.MethodGet {
+		requestQuery = mergeQuickSaveQuery(query, zoneid)
 	}
 
-	req, err := http.NewRequestWithContext(quicksaveCtx, http.MethodPost, url, bytes.NewReader(body))
+	url := buildQuickSaveURL(port, path, requestQuery)
+
+	var body io.Reader
+	if method == http.MethodPost {
+		payload := QuickSave{ZoneId: zoneid}
+		bodyBytes, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("failed to marshal payload: %w", err)
+		}
+		body = bytes.NewReader(bodyBytes)
+	}
+
+	req, err := http.NewRequestWithContext(quicksaveCtx, method, url, body)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if auth != nil {
 		authHeader, err := auth.AuthorizationHeader(quicksaveCtx)
 		if err != nil {

@@ -36,7 +36,7 @@ func Test_quicksave_Uses_Inter_Server_Auth(t *testing.T) {
 	port, err := strconv.Atoi(portStr)
 	assert.Nil(t, err)
 
-	err = quicksave(context.Background(), "zone-1", port, "", "", stubQuickSaveAuth{header: "Bearer test-token"}, "ignored-api-key")
+	err = quicksave(context.Background(), "zone-1", port, "", "", http.MethodPost, stubQuickSaveAuth{header: "Bearer test-token"}, "ignored-api-key")
 	assert.Nil(t, err)
 	assert.Equal(t, "Bearer test-token", gotAuth)
 	assert.Empty(t, gotAPIKey)
@@ -58,10 +58,40 @@ func Test_quicksave_Uses_Api_Key_When_Auth_Not_Configured(t *testing.T) {
 	port, err := strconv.Atoi(portStr)
 	assert.Nil(t, err)
 
-	err = quicksave(context.Background(), "zone-1", port, "", "", nil, "secret-key")
+	err = quicksave(context.Background(), "zone-1", port, "", "", http.MethodPost, nil, "secret-key")
 	assert.Nil(t, err)
 	assert.Empty(t, gotAuth)
 	assert.Equal(t, "secret-key", gotAPIKey)
+}
+
+func Test_quicksave_Uses_Get_Method(t *testing.T) {
+	var gotMethod string
+	var gotQuery string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, portStr, err := net.SplitHostPort(server.Listener.Addr().String())
+	assert.Nil(t, err)
+	port, err := strconv.Atoi(portStr)
+	assert.Nil(t, err)
+
+	err = quicksave(context.Background(), "zone-1", port, "", "force=true", http.MethodGet, nil, "")
+	assert.Nil(t, err)
+	assert.Equal(t, http.MethodGet, gotMethod)
+	assert.Equal(t, "force=true&zone_id=zone-1", gotQuery)
+}
+
+func Test_normalizeQuickSaveMethod(t *testing.T) {
+	assert.Equal(t, http.MethodPost, normalizeQuickSaveMethod(""))
+	assert.Equal(t, http.MethodPost, normalizeQuickSaveMethod("POST"))
+	assert.Equal(t, http.MethodGet, normalizeQuickSaveMethod("GET"))
+	assert.Equal(t, http.MethodGet, normalizeQuickSaveMethod("get"))
+	assert.Equal(t, http.MethodPost, normalizeQuickSaveMethod("PUT"))
 }
 
 func Test_buildQuickSaveURL(t *testing.T) {

@@ -49,7 +49,7 @@ func CreateHarnessTestHelperWithQuickSave(duration time.Duration, quickSaveEnabl
 	spannerMock := mocks.SpannerMock{}
 	gameService := &GameServiceMock{}
 
-	harness := NewHarness(gameService, logger, &spannerMock, quickSaveEnabled, nil, "test-api-key", 0, "", "", quickSaveWait)
+	harness := NewHarness(gameService, logger, &spannerMock, quickSaveEnabled, nil, "test-api-key", 0, "", "", "", quickSaveWait)
 	return HarnessTestHelper{
 		Logger:      logger,
 		LogBuffer:   &logBuffer,

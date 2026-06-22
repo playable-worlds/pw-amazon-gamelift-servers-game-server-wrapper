@@ -52,6 +52,7 @@ type ConfigWrapper struct {
 	QuickSavePort              int               `mapstructure:"quick-save-port" yaml:"quick-save-port"`
 	QuickSavePath              string            `mapstructure:"quick-save-path" yaml:"quick-save-path"`
 	QuickSaveQuery             string            `mapstructure:"quick-save-query" yaml:"quick-save-query"`
+	QuickSaveMethod            string            `mapstructure:"quick-save-method" yaml:"quick-save-method"`
 	QuickSaveWait              string            `mapstructure:"quick-save-wait" yaml:"quick-save-wait"`
 	Datadog                    Datadog           `mapstructure:"datadog" yaml:"datadog,omitempty"`
 	Otelcol                    Otelcol           `mapstructure:"otelcol" yaml:"otelcol,omitempty"`
@@ -294,6 +295,7 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 		QuickSavePort:   configWrapper.QuickSavePort,
 		QuickSavePath:   configWrapper.QuickSavePath,
 		QuickSaveQuery:  configWrapper.QuickSaveQuery,
+		QuickSaveMethod: configWrapper.QuickSaveMethod,
 		QuickSaveWait:   configWrapper.QuickSaveWait,
 	}
 	cfg.Datadog = Datadog{
@@ -372,6 +374,7 @@ type Hosting struct {
 	QuickSavePort    int             `mapstructure:"quickSavePort" yaml:"quickSavePort"`
 	QuickSavePath    string          `mapstructure:"quickSavePath" yaml:"quickSavePath"`
 	QuickSaveQuery   string          `mapstructure:"quickSaveQuery" yaml:"quickSaveQuery"`
+	QuickSaveMethod  string          `mapstructure:"quickSaveMethod" yaml:"quickSaveMethod"`
 	QuickSaveWait    string          `mapstructure:"quickSaveWait" yaml:"quickSaveWait"`
 }
 
