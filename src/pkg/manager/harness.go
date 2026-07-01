@@ -36,7 +36,12 @@ type harness struct {
 	spanner           observability.Spanner
 	hostingStartEvent *events.HostingStart
 	quickSaveEnabled   bool
+	quickSaveAuth      QuickSaveAuth
 	quickSaveApiKey    string
+	quickSavePort      int
+	quickSavePath      string
+	quickSaveQuery     string
+	quickSaveMethod    string
 	quickSaveWait      time.Duration
 	quickSaveAttempted bool
 }
@@ -205,10 +210,14 @@ func (harness *harness) Run(ctx context.Context) error {
 // This method ensures quicksave completes before the game server is stopped.
 func (harness *harness) performQuickSave(ctx context.Context) {
 	if harness.quickSaveEnabled && harness.hostingStartEvent != nil && !harness.quickSaveAttempted {
-		harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", harness.hostingStartEvent.GamePort)
+		port := harness.quickSavePort
+		if port == 0 {
+			port = harness.hostingStartEvent.GamePort
+		}
+		harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", port)
 		harness.quickSaveAttempted = true
 		// Use context.Background() to ensure quicksave isn't cancelled by context cancellation
-		if err := quicksave(context.Background(), harness.hostingStartEvent.GameSessionName, harness.hostingStartEvent.GamePort, harness.quickSaveApiKey); err != nil {
+		if err := quicksave(context.Background(), harness.hostingStartEvent.GameSessionName, port, harness.quickSavePath, harness.quickSaveQuery, harness.quickSaveMethod, harness.quickSaveAuth, harness.quickSaveApiKey); err != nil {
 			harness.logger.WarnContext(ctx, "Failed to perform quicksave", "error", err)
 		} else {
 			harness.logger.DebugContext(ctx, "Quicksave completed successfully")
@@ -254,12 +263,17 @@ func (harness *harness) Close(ctx context.Context) error {
 //   - logger: Logger instance for recording operations and events
 //   - spanner: Observability component for monitoring and tracing
 //   - quickSaveEnabled: Whether quicksave functionality is enabled
-//   - quickSaveApiKey: API key for quicksave requests
+//   - quickSaveAuth: Optional inter-server auth provider for quicksave requests
+//   - quickSaveApiKey: API key for quicksave requests when inter-server auth is not used
+//   - quickSavePort: HTTP port for quicksave requests (defaults to the game session port when 0)
+//   - quickSavePath: HTTP path for quicksave requests (defaults to /quicksave)
+//   - quickSaveQuery: Optional query string for quicksave requests (without leading ?)
+//   - quickSaveMethod: HTTP method for quicksave requests (GET or POST, defaults to POST)
 //   - quickSaveWait: Duration string to wait after quicksave before allowing shutdown (e.g. "30s")
 //
 // Returns:
 //   - *harness: A new harness instance configured with the provided components
-func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spanner, quickSaveEnabled bool, quickSaveApiKey string, quickSaveWait string) *harness {
+func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spanner, quickSaveEnabled bool, quickSaveAuth QuickSaveAuth, quickSaveApiKey string, quickSavePort int, quickSavePath string, quickSaveQuery string, quickSaveMethod string, quickSaveWait string) *harness {
 	wait, usedDefault := parseQuickSaveWait(quickSaveWait)
 	if usedDefault && quickSaveEnabled {
 		logger.Info("No quick-save-wait configured, using default", "quickSaveWait", wait)
@@ -275,7 +289,12 @@ func NewHarness(game game.Server, logger *slog.Logger, spanner observability.Spa
 		game:             game,
 		spanner:          spanner,
 		quickSaveEnabled: quickSaveEnabled,
+		quickSaveAuth:    quickSaveAuth,
 		quickSaveApiKey:  quickSaveApiKey,
+		quickSavePort:    quickSavePort,
+		quickSavePath:    quickSavePath,
+		quickSaveQuery:   quickSaveQuery,
+		quickSaveMethod:  normalizeQuickSaveMethod(quickSaveMethod),
 		quickSaveWait:    wait,
 	}
 
