@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -98,9 +99,16 @@ func (process *process) Run(ctx context.Context, args *Args, pidChan chan<- int)
 	process.logger.DebugContext(ctx, "Preparing command", "path", process.exePath, "workingDir", process.cfg.WorkingDirectory)
 
 	process.cmd = exec.CommandContext(ctx, process.exePath, args.CliArgs...)
-	process.cmd.Stderr = args.Stderr
-	process.cmd.Stdout = args.Stdout
 	process.cmd.Dir = process.cfg.WorkingDirectory
+
+	stdoutPipe, err := process.cmd.StdoutPipe()
+	if err != nil {
+		return res, errors.Wrap(err, "Failed to create stdout pipe")
+	}
+	stderrPipe, err := process.cmd.StderrPipe()
+	if err != nil {
+		return res, errors.Wrap(err, "Failed to create stderr pipe")
+	}
 
 	if process.cfg.EnvVars != nil {
 		// Preserve parent environment and overlay configured variables
@@ -142,7 +150,18 @@ func (process *process) Run(ctx context.Context, args *Args, pidChan chan<- int)
 			time.Sleep(d)
 		}
 	}
-	err := process.cmd.Start()
+	var copyWG sync.WaitGroup
+	copyWG.Add(2)
+	go func() {
+		defer copyWG.Done()
+		_, _ = io.Copy(args.Stdout, stdoutPipe)
+	}()
+	go func() {
+		defer copyWG.Done()
+		_, _ = io.Copy(args.Stderr, stderrPipe)
+	}()
+
+	err = process.cmd.Start()
 	if err != nil {
 		return res, err
 	}
@@ -154,7 +173,15 @@ func (process *process) Run(ctx context.Context, args *Args, pidChan chan<- int)
 		}()
 	}
 
-	err = process.cmd.Wait()
+	// Wait only for the direct child process. cmd.Wait() also blocks until
+	// stdout/stderr pipes are closed, which can hang forever when a grandchild
+	// inherits those FDs and outlives the direct child.
+	state, err := process.cmd.Process.Wait()
+	process.cmd.ProcessState = state
+
+	_ = stdoutPipe.Close()
+	_ = stderrPipe.Close()
+	go copyWG.Wait()
 
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
@@ -168,8 +195,8 @@ func (process *process) Run(ctx context.Context, args *Args, pidChan chan<- int)
 		}
 	}
 
-	if process.cmd.ProcessState != nil {
-		res.ReturnCode = process.cmd.ProcessState.ExitCode()
+	if state != nil {
+		res.ReturnCode = state.ExitCode()
 	}
 	process.logger.InfoContext(ctx, "Process finished", "pid", process.cmd.Process.Pid, "exitCode", res.ReturnCode, "err", err)
 
