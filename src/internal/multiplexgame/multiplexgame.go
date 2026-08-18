@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/credserver"
@@ -70,6 +71,7 @@ type MultiplexGame struct {
 	credServer           *credserver.Server
 	status               events.GameStatus
 	cancel               func()
+	route53Mapping       *route53manager.Mapping
 }
 
 // SessionLoggerFactory defines the interface for creating session-specific loggers.
@@ -118,10 +120,12 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 	// Setup Route53
 	requestHandler := helpers.NewHttpRequestHandler(http.DefaultClient, multiplexGame.logger)
 	if multiplexGame.cfg.Route53.DoMapping {
-		err := route53manager.SetupRoute53Mappings(ctx, multiplexGame.logger, startArgs.GameSessionName, &multiplexGame.cfg, startArgs.AwsCredentials, requestHandler)
+		mapping, err := route53manager.SetupRoute53Mappings(ctx, multiplexGame.logger, startArgs.GameSessionName, &multiplexGame.cfg, startArgs.AwsCredentials, requestHandler)
 		if err != nil {
 			multiplexGame.logger.ErrorContext(ctx, "Could not set up Route 53 mapping", "err", err)
 		}
+		multiplexGame.route53Mapping = mapping
+		defer multiplexGame.cleanupRoute53(ctx)
 	}
 
 	if multiplexGame.cfg.Ports.GamePort == 0 {
@@ -332,6 +336,7 @@ func (multiplexGame *MultiplexGame) initProcess(ctx context.Context, build confi
 //   - error: Any error during shutdown
 func (multiplexGame *MultiplexGame) Stop(ctx context.Context) error {
 	multiplexGame.logger.InfoContext(ctx, "Initiating game server shutdown")
+	multiplexGame.cleanupRoute53(ctx)
 	if multiplexGame.cancel != nil {
 		multiplexGame.logger.DebugContext(ctx, "Canceling game server context")
 		multiplexGame.cancel()
@@ -354,6 +359,20 @@ func (multiplexGame *MultiplexGame) Stop(ctx context.Context) error {
 	multiplexGame.logger.InfoContext(ctx, "Game server shutdown completed")
 
 	return nil
+}
+
+func (multiplexGame *MultiplexGame) cleanupRoute53(ctx context.Context) {
+	if multiplexGame.route53Mapping == nil {
+		return
+	}
+
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	multiplexGame.logger.InfoContext(cleanupCtx, "Cleaning up Route 53 DNS records")
+	if err := multiplexGame.route53Mapping.Cleanup(cleanupCtx, multiplexGame.logger); err != nil {
+		multiplexGame.logger.ErrorContext(cleanupCtx, "failed to clean up Route 53 records", "err", err)
+	}
 }
 
 func (multiplexGame *MultiplexGame) createLogStreams(ctx context.Context, logDirectory string) error {
