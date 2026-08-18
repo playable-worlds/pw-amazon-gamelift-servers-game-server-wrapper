@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
@@ -27,12 +26,6 @@ import (
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/sessiontemplate"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/types/events"
 	"github.com/pkg/errors"
-)
-
-const (
-	gamePropertyCasimEndpoint = "casim_endpoint"
-	envVarCasimURL            = "CASIM_URL"
-	envVarCasimEndpoint       = "CASIM_ENDPOINT"
 )
 
 // New creates a new MultiplexGame instance with the provided configuration and dependencies.
@@ -239,12 +232,6 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 			procCfg.EnvVars[arg.Name] = value
 		}
 
-		// Session casim_endpoint wins over configured CASIM_* env vars.
-		if endpoint := applyCasimEndpointOverride(procCfg.EnvVars, startArgs); endpoint != "" {
-			multiplexGame.logger.InfoContext(ctx, "Overriding CASIM_URL from game session property casim_endpoint",
-				"casim_endpoint", endpoint)
-		}
-
 		for k := range procCfg.EnvVars {
 			multiplexGame.logger.DebugContext(ctx, "added env var", "name", k)
 		}
@@ -291,24 +278,6 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 	multiplexGame.logger.DebugContext(ctx, "Process result received", "error", err)
 
 	return err
-}
-
-// applyCasimEndpointOverride sets CASIM_URL from the game session property casim_endpoint
-// when present, so it takes precedence over game-server-env-vars from configuration.
-// Returns the endpoint value when an override was applied.
-func applyCasimEndpointOverride(envVars map[string]string, startArgs *game.StartArgs) string {
-	if startArgs == nil || envVars == nil {
-		return ""
-	}
-
-	endpoint := strings.TrimSpace(startArgs.GameProperty(gamePropertyCasimEndpoint))
-	if endpoint == "" {
-		return ""
-	}
-
-	envVars[envVarCasimURL] = endpoint
-	envVars[envVarCasimEndpoint] = endpoint
-	return endpoint
 }
 
 // Init initializes the game server instance and prepares it for operation.
