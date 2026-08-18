@@ -184,3 +184,86 @@ func TestStopHappyPath(t *testing.T) {
 	logString := multiPlexGameMock.logBuffer.String()
 	assert.Contains(t, logString, "Initiating game server shutdown")
 }
+
+func TestApplyCasimEndpointOverride(t *testing.T) {
+	t.Run("overrides configured CASIM_URL when session property is set", func(t *testing.T) {
+		envVars := map[string]string{
+			"CASIM_URL":      "https://configured.example/casim",
+			"CASIM_BASE_URL": "configured.example",
+		}
+		startArgs := &game.StartArgs{
+			HostingStart: &events.HostingStart{
+				GamePropertiesMap: map[string]string{
+					"casim_endpoint": "https://session.example:50042",
+				},
+			},
+		}
+
+		got := applyCasimEndpointOverride(envVars, startArgs)
+
+		assert.Equal(t, "https://session.example:50042", got)
+		assert.Equal(t, "https://session.example:50042", envVars["CASIM_URL"])
+		assert.Equal(t, "https://session.example:50042", envVars["CASIM_ENDPOINT"])
+		assert.Equal(t, "configured.example", envVars["CASIM_BASE_URL"])
+	})
+
+	t.Run("reads casim_endpoint from GameProperties JSON", func(t *testing.T) {
+		envVars := map[string]string{
+			"CASIM_URL": "https://configured.example/casim",
+		}
+		startArgs := &game.StartArgs{
+			HostingStart: &events.HostingStart{
+				GameProperties: `{"casim_endpoint":"https://json.example:50042","zoneName":"alpha"}`,
+			},
+		}
+
+		got := applyCasimEndpointOverride(envVars, startArgs)
+
+		assert.Equal(t, "https://json.example:50042", got)
+		assert.Equal(t, "https://json.example:50042", envVars["CASIM_URL"])
+	})
+
+	t.Run("leaves configuration when property is missing", func(t *testing.T) {
+		envVars := map[string]string{
+			"CASIM_URL": "https://configured.example/casim",
+		}
+		startArgs := &game.StartArgs{
+			HostingStart: &events.HostingStart{
+				GamePropertiesMap: map[string]string{
+					"zoneName": "alpha",
+				},
+			},
+		}
+
+		got := applyCasimEndpointOverride(envVars, startArgs)
+
+		assert.Equal(t, "", got)
+		assert.Equal(t, "https://configured.example/casim", envVars["CASIM_URL"])
+		_, hasEndpoint := envVars["CASIM_ENDPOINT"]
+		assert.False(t, hasEndpoint)
+	})
+
+	t.Run("leaves configuration when property is blank", func(t *testing.T) {
+		envVars := map[string]string{
+			"CASIM_URL": "https://configured.example/casim",
+		}
+		startArgs := &game.StartArgs{
+			HostingStart: &events.HostingStart{
+				GamePropertiesMap: map[string]string{
+					"casim_endpoint": "   ",
+				},
+			},
+		}
+
+		got := applyCasimEndpointOverride(envVars, startArgs)
+
+		assert.Equal(t, "", got)
+		assert.Equal(t, "https://configured.example/casim", envVars["CASIM_URL"])
+	})
+
+	t.Run("no-ops on nil inputs", func(t *testing.T) {
+		assert.Equal(t, "", applyCasimEndpointOverride(nil, nil))
+		assert.Equal(t, "", applyCasimEndpointOverride(map[string]string{}, nil))
+		assert.Equal(t, "", applyCasimEndpointOverride(nil, &game.StartArgs{}))
+	})
+}

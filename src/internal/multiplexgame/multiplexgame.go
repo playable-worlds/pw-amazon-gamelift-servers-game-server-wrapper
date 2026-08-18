@@ -12,6 +12,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/credserver"
@@ -25,6 +27,12 @@ import (
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/sessiontemplate"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/types/events"
 	"github.com/pkg/errors"
+)
+
+const (
+	gamePropertyCasimEndpoint = "casim_endpoint"
+	envVarCasimURL            = "CASIM_URL"
+	envVarCasimEndpoint       = "CASIM_ENDPOINT"
 )
 
 // New creates a new MultiplexGame instance with the provided configuration and dependencies.
@@ -70,6 +78,7 @@ type MultiplexGame struct {
 	credServer           *credserver.Server
 	status               events.GameStatus
 	cancel               func()
+	route53Mapping       *route53manager.Mapping
 }
 
 // SessionLoggerFactory defines the interface for creating session-specific loggers.
@@ -118,10 +127,12 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 	// Setup Route53
 	requestHandler := helpers.NewHttpRequestHandler(http.DefaultClient, multiplexGame.logger)
 	if multiplexGame.cfg.Route53.DoMapping {
-		err := route53manager.SetupRoute53Mappings(ctx, multiplexGame.logger, startArgs.GameSessionName, &multiplexGame.cfg, startArgs.AwsCredentials, requestHandler)
+		mapping, err := route53manager.SetupRoute53Mappings(ctx, multiplexGame.logger, startArgs.GameSessionName, &multiplexGame.cfg, startArgs.AwsCredentials, requestHandler)
 		if err != nil {
 			multiplexGame.logger.ErrorContext(ctx, "Could not set up Route 53 mapping", "err", err)
 		}
+		multiplexGame.route53Mapping = mapping
+		defer multiplexGame.cleanupRoute53(ctx)
 	}
 
 	if multiplexGame.cfg.Ports.GamePort == 0 {
@@ -228,6 +239,12 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 			procCfg.EnvVars[arg.Name] = value
 		}
 
+		// Session casim_endpoint wins over configured CASIM_* env vars.
+		if endpoint := applyCasimEndpointOverride(procCfg.EnvVars, startArgs); endpoint != "" {
+			multiplexGame.logger.InfoContext(ctx, "Overriding CASIM_URL from game session property casim_endpoint",
+				"casim_endpoint", endpoint)
+		}
+
 		for k := range procCfg.EnvVars {
 			multiplexGame.logger.DebugContext(ctx, "added env var", "name", k)
 		}
@@ -274,6 +291,24 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 	multiplexGame.logger.DebugContext(ctx, "Process result received", "error", err)
 
 	return err
+}
+
+// applyCasimEndpointOverride sets CASIM_URL from the game session property casim_endpoint
+// when present, so it takes precedence over game-server-env-vars from configuration.
+// Returns the endpoint value when an override was applied.
+func applyCasimEndpointOverride(envVars map[string]string, startArgs *game.StartArgs) string {
+	if startArgs == nil || envVars == nil {
+		return ""
+	}
+
+	endpoint := strings.TrimSpace(startArgs.GameProperty(gamePropertyCasimEndpoint))
+	if endpoint == "" {
+		return ""
+	}
+
+	envVars[envVarCasimURL] = endpoint
+	envVars[envVarCasimEndpoint] = endpoint
+	return endpoint
 }
 
 // Init initializes the game server instance and prepares it for operation.
@@ -332,6 +367,7 @@ func (multiplexGame *MultiplexGame) initProcess(ctx context.Context, build confi
 //   - error: Any error during shutdown
 func (multiplexGame *MultiplexGame) Stop(ctx context.Context) error {
 	multiplexGame.logger.InfoContext(ctx, "Initiating game server shutdown")
+	multiplexGame.cleanupRoute53(ctx)
 	if multiplexGame.cancel != nil {
 		multiplexGame.logger.DebugContext(ctx, "Canceling game server context")
 		multiplexGame.cancel()
@@ -354,6 +390,20 @@ func (multiplexGame *MultiplexGame) Stop(ctx context.Context) error {
 	multiplexGame.logger.InfoContext(ctx, "Game server shutdown completed")
 
 	return nil
+}
+
+func (multiplexGame *MultiplexGame) cleanupRoute53(ctx context.Context) {
+	if multiplexGame.route53Mapping == nil {
+		return
+	}
+
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	multiplexGame.logger.InfoContext(cleanupCtx, "Cleaning up Route 53 DNS records")
+	if err := multiplexGame.route53Mapping.Cleanup(cleanupCtx, multiplexGame.logger); err != nil {
+		multiplexGame.logger.ErrorContext(cleanupCtx, "failed to clean up Route 53 records", "err", err)
+	}
 }
 
 func (multiplexGame *MultiplexGame) createLogStreams(ctx context.Context, logDirectory string) error {

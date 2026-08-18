@@ -37,7 +37,7 @@ orchestration:
 route53:
   doMapping: true
   hostDomain: "host domain to map"
-  ttl: 60
+  ttl: 0 # Route 53 minimum TTL in seconds
   comment: "a comment for route 53"
   publicHostedZoneId: "the public hosted zone id to map"
   privateHostedZoneId: "the private hosted zone id to map"
