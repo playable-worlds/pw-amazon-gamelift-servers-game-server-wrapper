@@ -6,9 +6,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -77,6 +79,14 @@ type AnywhereConfig struct {
 	IPv4               string                   `mapstructure:"ipv4" yaml:"ipv4"`
 }
 
+// Launcher values for game-server-details.launcher.
+const (
+	// LauncherProcess runs a single executable per game session (the default).
+	LauncherProcess = "process"
+	// LauncherDocker runs the configured containers per game session.
+	LauncherDocker = "docker"
+)
+
 // GameServerDetails contains configuration details for the game server executable.
 type GameServerDetails struct {
 	WorkingDir         string          `mapstructure:"working-directory" yaml:"working-directory"`
@@ -84,6 +94,53 @@ type GameServerDetails struct {
 	ExecutableFilePath string          `mapstructure:"executable-file-path" yaml:"executable-file-path"`
 	GameServerArgs     []config.CliArg `mapstructure:"game-server-args" yaml:"game-server-args"`
 	GameServerEnvVars  []config.EnvVar `mapstructure:"game-server-env-vars" yaml:"game-server-env-vars"`
+	Launcher           string          `mapstructure:"launcher" yaml:"launcher"`
+	Containers         []Container     `mapstructure:"containers" yaml:"containers"`
+}
+
+// Container describes one docker container started per game session when launcher is "docker".
+// Containers start in list order and are stopped (and quicksaved) in reverse order.
+type Container struct {
+	// Name is used as the docker container name.
+	Name  string `mapstructure:"name" yaml:"name"`
+	Image string `mapstructure:"image" yaml:"image"`
+	// Network is the docker network mode, defaults to "host" so that localhost services
+	// (credential server, quicksave, datadog agent) behave as they do for a plain process.
+	Network string `mapstructure:"network" yaml:"network"`
+	// Args are appended after the image, rendered with the session template like game-server-args.
+	Args []config.CliArg `mapstructure:"args" yaml:"args"`
+	// EnvVars are rendered with the session template and passed via a docker env file.
+	EnvVars []config.EnvVar `mapstructure:"env-vars" yaml:"env-vars"`
+	// DockerRunArgs are extra flags passed to `docker run` before the image (volumes, ulimits, labels...).
+	DockerRunArgs []string `mapstructure:"docker-run-args" yaml:"docker-run-args"`
+	// InjectAwsCredentials sets AWS_* env vars from the fleet-role credentials (requires use-fleet-role-credentials).
+	InjectAwsCredentials bool `mapstructure:"inject-aws-credentials" yaml:"inject-aws-credentials"`
+	// UseCredentialServer passes PW_CRED_SERVER_URL/TOKEN (requires local-credential-server).
+	UseCredentialServer bool `mapstructure:"use-credential-server" yaml:"use-credential-server"`
+	// ReadyCheck, when set, gates the start of the next container on an HTTP endpoint answering 2xx.
+	ReadyCheck *ReadyCheck `mapstructure:"ready-check" yaml:"ready-check"`
+	// StopTimeout is passed to `docker stop -t`, defaults to 30s.
+	StopTimeout string `mapstructure:"stop-timeout" yaml:"stop-timeout"`
+	// QuickSave, when set, is called before the containers are stopped.
+	QuickSave *ContainerQuickSave `mapstructure:"quick-save" yaml:"quick-save"`
+}
+
+// ReadyCheck defines an HTTP readiness probe for a container.
+type ReadyCheck struct {
+	Url      string `mapstructure:"url" yaml:"url"`
+	Timeout  string `mapstructure:"timeout" yaml:"timeout"`
+	Interval string `mapstructure:"interval" yaml:"interval"`
+}
+
+// ContainerQuickSave mirrors the top-level quick-save-* settings for a single container.
+type ContainerQuickSave struct {
+	UseInterServerAuth bool   `mapstructure:"use-inter-server-auth" yaml:"use-inter-server-auth"`
+	ApiKey             string `mapstructure:"api-key" yaml:"api-key"`
+	Port               int    `mapstructure:"port" yaml:"port"`
+	Path               string `mapstructure:"path" yaml:"path"`
+	Query              string `mapstructure:"query" yaml:"query"`
+	Method             string `mapstructure:"method" yaml:"method"`
+	Wait               string `mapstructure:"wait" yaml:"wait"`
 }
 
 // BuildDetail contains information about the game server build and execution environment.
@@ -93,7 +150,16 @@ type BuildDetail struct {
 	DefaultArgs     []config.CliArg `mapstructure:"defaultArgs" yaml:"defaultArgs"`
 	EnvVars         []config.EnvVar `mapstructure:"envVars" yaml:"envVars"`
 	DelayStart      string          `mapstructure:"delayStart" yaml:"delayStart"`
+	Launcher        string          `mapstructure:"launcher" yaml:"launcher"`
+	Containers      []Container     `mapstructure:"containers" yaml:"containers"`
 }
+
+// IsDocker reports whether the game session is launched as docker containers.
+func (buildDetail BuildDetail) IsDocker() bool {
+	return buildDetail.Launcher == LauncherDocker
+}
+
+var containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
 
 // Validate performs validation of the Config structure.
 // It ensures all required fields are properly set and contain valid values.
@@ -105,6 +171,58 @@ func (cfg Config) Validate() error {
 	if err := validate.Struct(cfg); err != nil {
 		return fmt.Errorf("error validating config: %w", err)
 	}
+	if err := cfg.BuildDetail.validateLauncher(); err != nil {
+		return fmt.Errorf("error validating config: %w", err)
+	}
+	return nil
+}
+
+func (buildDetail BuildDetail) validateLauncher() error {
+	switch buildDetail.Launcher {
+	case "", LauncherProcess:
+		return nil
+	case LauncherDocker:
+	default:
+		return fmt.Errorf("game-server-details.launcher must be %q or %q, got %q", LauncherProcess, LauncherDocker, buildDetail.Launcher)
+	}
+
+	if len(buildDetail.Containers) == 0 {
+		return errors.New("game-server-details.containers must not be empty when launcher is docker")
+	}
+
+	names := make(map[string]bool, len(buildDetail.Containers))
+	for i, container := range buildDetail.Containers {
+		if !containerNamePattern.MatchString(container.Name) {
+			return fmt.Errorf("game-server-details.containers[%d].name %q is not a valid container name", i, container.Name)
+		}
+		if names[container.Name] {
+			return fmt.Errorf("game-server-details.containers[%d].name %q is duplicated", i, container.Name)
+		}
+		names[container.Name] = true
+
+		if container.Image == "" {
+			return fmt.Errorf("game-server-details.containers[%d].image must not be empty", i)
+		}
+		if container.StopTimeout != "" {
+			if _, err := time.ParseDuration(container.StopTimeout); err != nil {
+				return fmt.Errorf("game-server-details.containers[%d].stop-timeout: %w", i, err)
+			}
+		}
+		if container.ReadyCheck != nil {
+			if container.ReadyCheck.Url == "" {
+				return fmt.Errorf("game-server-details.containers[%d].ready-check.url must not be empty", i)
+			}
+			for _, d := range []string{container.ReadyCheck.Timeout, container.ReadyCheck.Interval} {
+				if d == "" {
+					continue
+				}
+				if _, err := time.ParseDuration(d); err != nil {
+					return fmt.Errorf("game-server-details.containers[%d].ready-check: %w", i, err)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -202,10 +320,13 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 	// Clean working directory path
 	absWorkingDir = filepath.Clean(absWorkingDir)
 
-	// Make ExePath relative to WorkingDir
-	relExePath, err := makePathRelative(absWorkingDir, configWrapper.GameServerDetails.ExecutableFilePath)
-	if err != nil {
-		return fmt.Errorf("error making executable path relative: %v", err)
+	// Make ExePath relative to WorkingDir. The docker launcher has no executable.
+	var relExePath string
+	if configWrapper.GameServerDetails.Launcher != LauncherDocker {
+		relExePath, err = makePathRelative(absWorkingDir, configWrapper.GameServerDetails.ExecutableFilePath)
+		if err != nil {
+			return fmt.Errorf("error making executable path relative: %v", err)
+		}
 	}
 
 	// Make game server logs directory absolute if it's relative
@@ -226,6 +347,8 @@ func AdaptConfigWrapperToConfig(configWrapper *ConfigWrapper, cfg *Config) error
 		DefaultArgs:     configWrapper.GameServerDetails.GameServerArgs,
 		EnvVars:         configWrapper.GameServerDetails.GameServerEnvVars,
 		DelayStart:      configWrapper.GameServerDetails.DelayStart,
+		Launcher:        configWrapper.GameServerDetails.Launcher,
+		Containers:      configWrapper.GameServerDetails.Containers,
 	}
 	cfg.Ports = Ports{
 		GamePort: configWrapper.Ports.GamePort,

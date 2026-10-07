@@ -44,6 +44,48 @@ type harness struct {
 	quickSaveMethod    string
 	quickSaveWait      time.Duration
 	quickSaveAttempted bool
+	// quickSaveTargets, when non-empty, replaces the single quicksave configured above.
+	quickSaveTargets []QuickSaveTarget
+}
+
+// QuickSaveTarget is one quicksave endpoint called before the game is stopped.
+type QuickSaveTarget struct {
+	// Name identifies the target in logs, e.g. the container name.
+	Name string
+	// Port defaults to the game session port when 0.
+	Port   int
+	Path   string
+	Query  string
+	Method string
+	Auth   QuickSaveAuth
+	ApiKey string
+	// Wait is how long to wait after this quicksave before continuing.
+	Wait time.Duration
+}
+
+// SetQuickSaveTargets replaces the single configured quicksave with an ordered list of
+// targets, which are called one after another. Setting targets enables quicksave.
+func (harness *harness) SetQuickSaveTargets(targets []QuickSaveTarget) {
+	harness.quickSaveTargets = targets
+	if len(targets) > 0 {
+		harness.quickSaveEnabled = true
+	}
+}
+
+// NewQuickSaveTarget builds a target from configuration values, parsing wait like quick-save-wait.
+func NewQuickSaveTarget(name string, port int, path string, query string, method string, auth QuickSaveAuth, apiKey string, wait string) QuickSaveTarget {
+	waitDuration, _ := parseQuickSaveWait(wait)
+
+	return QuickSaveTarget{
+		Name:   name,
+		Port:   port,
+		Path:   path,
+		Query:  query,
+		Method: normalizeQuickSaveMethod(method),
+		Auth:   auth,
+		ApiKey: apiKey,
+		Wait:   waitDuration,
+	}
 }
 
 // HostingStart handles the server hosting start event.
@@ -209,23 +251,40 @@ func (harness *harness) Run(ctx context.Context) error {
 // performQuickSave executes the quicksave operation if enabled and not already attempted.
 // This method ensures quicksave completes before the game server is stopped.
 func (harness *harness) performQuickSave(ctx context.Context) {
-	if harness.quickSaveEnabled && harness.hostingStartEvent != nil && !harness.quickSaveAttempted {
-		port := harness.quickSavePort
+	if !harness.quickSaveEnabled || harness.hostingStartEvent == nil || harness.quickSaveAttempted {
+		return
+	}
+	harness.quickSaveAttempted = true
+
+	targets := harness.quickSaveTargets
+	if len(targets) == 0 {
+		targets = []QuickSaveTarget{{
+			Port:   harness.quickSavePort,
+			Path:   harness.quickSavePath,
+			Query:  harness.quickSaveQuery,
+			Method: harness.quickSaveMethod,
+			Auth:   harness.quickSaveAuth,
+			ApiKey: harness.quickSaveApiKey,
+			Wait:   harness.quickSaveWait,
+		}}
+	}
+
+	for _, target := range targets {
+		port := target.Port
 		if port == 0 {
 			port = harness.hostingStartEvent.GamePort
 		}
-		harness.logger.DebugContext(ctx, "attempting to quicksave", "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", port)
-		harness.quickSaveAttempted = true
+		harness.logger.DebugContext(ctx, "attempting to quicksave", "target", target.Name, "saveEnabled", harness.quickSaveEnabled, "sessionName", harness.hostingStartEvent.GameSessionName, "port", port)
 		// Use context.Background() to ensure quicksave isn't cancelled by context cancellation
-		if err := quicksave(context.Background(), harness.hostingStartEvent.GameSessionName, port, harness.quickSavePath, harness.quickSaveQuery, harness.quickSaveMethod, harness.quickSaveAuth, harness.quickSaveApiKey); err != nil {
-			harness.logger.WarnContext(ctx, "Failed to perform quicksave", "error", err)
+		if err := quicksave(context.Background(), harness.hostingStartEvent.GameSessionName, port, target.Path, target.Query, target.Method, target.Auth, target.ApiKey); err != nil {
+			harness.logger.WarnContext(ctx, "Failed to perform quicksave", "target", target.Name, "error", err)
 		} else {
-			harness.logger.DebugContext(ctx, "Quicksave completed successfully")
+			harness.logger.DebugContext(ctx, "Quicksave completed successfully", "target", target.Name)
 		}
 
-		if harness.quickSaveWait > 0 {
-			harness.logger.DebugContext(ctx, "waiting after quicksave before shutdown", "wait", harness.quickSaveWait)
-			time.Sleep(harness.quickSaveWait)
+		if target.Wait > 0 {
+			harness.logger.DebugContext(ctx, "waiting after quicksave before shutdown", "target", target.Name, "wait", target.Wait)
+			time.Sleep(target.Wait)
 		}
 	}
 }

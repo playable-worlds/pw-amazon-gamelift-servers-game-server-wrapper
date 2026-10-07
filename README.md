@@ -383,6 +383,32 @@ After creating the fleet, record the **fleet id** from the API response. We will
 
 Wait for it to be ACTIVE before proceeding. You can check its status using [AWS console](https://console.aws.amazon.com/gamelift/ec2-fleets) or [DescribeFleetAttributes API](https://docs.aws.amazon.com/gamelift/latest/apireference/API_DescribeFleetAttributes.html)
 
+### Docker launcher (several containers per game session)
+
+By default the wrapper starts one executable per game session (`game-server-details.launcher: process`).
+With `launcher: docker` it instead starts the containers listed in `game-server-details.containers`,
+for example the Unity gameserver next to CASim on a zoneserver fleet. See
+[`src/template/example-docker-launcher-config.yaml`](src/template/example-docker-launcher-config.yaml)
+for every option.
+
+- **Lifecycle:** containers start in list order. A container with a `ready-check` must answer 2xx on
+  that URL before the next one starts. If any container exits, the others are stopped and the game
+  session ends, just like a process exit. On termination each container gets `docker stop -t <stop-timeout>`,
+  in reverse order.
+- **Quicksave:** each container can have its own `quick-save` block (same options as the top-level
+  `quick-save-*` keys). They are called in reverse start order before the containers are stopped. When no
+  container has one, the top-level settings are used.
+- **Environment:** game session properties and each container's `env-vars` (session templates as in
+  `game-server-env-vars`) are written to a private `--env-file`, never to the uploaded log directory.
+  `inject-aws-credentials` and `use-credential-server` choose per container which credentials it gets.
+- **Networking:** containers use `--network host` by default, so the credential server, quicksave,
+  readiness check and local agents (Datadog, OTel) work over localhost as they do for a process.
+- **Logs:** each container's stdout/stderr goes to `<name>-stdout.log` / `<name>-stderr.log` in the
+  session log directory.
+- **Instance requirements:** the `docker` CLI must be on the wrapper's `PATH`, the wrapper user must be
+  allowed to use the docker daemon, and every image must already be present locally (for example via
+  `docker load` in `install.sh`). Images are checked at startup, before the process reports ready.
+
 ## Managed Container Fleet
 
 **Amazon GameLift Servers only supports Linux containers. Build the wrapper and the game server for Linux before proceeding.**

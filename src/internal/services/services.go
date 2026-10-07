@@ -71,15 +71,13 @@ func Default(ctx context.Context, cfg *config.Config, logger *slog.Logger, obs *
 	logger.DebugContext(ctx, "Creating game manager instance")
 	var quickSaveAuth manager.QuickSaveAuth
 	if cfg.Hosting.QuickSaveUseInterServerAuth {
-		quickSaveAuth = &quickSaveInterServerAuth{
-			auth: interserverauth.New(
-				cfg.Orchestration.AuthHeaderPrefix,
-				cfg.Orchestration.ClientId,
-				cfg.Orchestration.ClientSecret,
-				cfg.Orchestration.GetTokenUrl,
-				helpers.NewHttpRequestHandler(http.DefaultClient, logger),
-				logger,
-			),
+		quickSaveAuth = newQuickSaveInterServerAuth(cfg, logger)
+	}
+
+	harness := manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave, quickSaveAuth, cfg.Hosting.QuickSaveApiKey, cfg.Hosting.QuickSavePort, cfg.Hosting.QuickSavePath, cfg.Hosting.QuickSaveQuery, cfg.Hosting.QuickSaveMethod, cfg.Hosting.QuickSaveWait)
+	if cfg.BuildDetail.IsDocker() {
+		if targets := containerQuickSaveTargets(cfg, logger); len(targets) > 0 {
+			harness.SetQuickSaveTargets(targets)
 		}
 	}
 
@@ -92,7 +90,7 @@ func Default(ctx context.Context, cfg *config.Config, logger *slog.Logger, obs *
 		QuickSaveQuery:              cfg.Hosting.QuickSaveQuery,
 		QuickSaveMethod:             cfg.Hosting.QuickSaveMethod,
 		QuickSaveWait:               cfg.Hosting.QuickSaveWait,
-	}, game, hosting, logger, obs.Spanner, manager.NewHarness(game, logger, obs.Spanner, cfg.Hosting.QuickSave, quickSaveAuth, cfg.Hosting.QuickSaveApiKey, cfg.Hosting.QuickSavePort, cfg.Hosting.QuickSavePath, cfg.Hosting.QuickSaveQuery, cfg.Hosting.QuickSaveMethod, cfg.Hosting.QuickSaveWait), datadogService, otelcolService)
+	}, game, hosting, logger, obs.Spanner, harness, datadogService, otelcolService)
 
 	logger.DebugContext(ctx, "Creating game runner instance")
 	runnerInstance := runner.New("runner", managerInstance, logger, obs.Spanner)
@@ -108,4 +106,39 @@ func Default(ctx context.Context, cfg *config.Config, logger *slog.Logger, obs *
 	logger.DebugContext(ctx, "Game server wrapper services initialized successfully")
 
 	return s, nil
+}
+
+func newQuickSaveInterServerAuth(cfg *config.Config, logger *slog.Logger) manager.QuickSaveAuth {
+	return &quickSaveInterServerAuth{
+		auth: interserverauth.New(
+			cfg.Orchestration.AuthHeaderPrefix,
+			cfg.Orchestration.ClientId,
+			cfg.Orchestration.ClientSecret,
+			cfg.Orchestration.GetTokenUrl,
+			helpers.NewHttpRequestHandler(http.DefaultClient, logger),
+			logger,
+		),
+	}
+}
+
+// containerQuickSaveTargets returns the quicksave targets of the docker containers in
+// reverse start order, so that later containers (e.g. the gameserver) save while the
+// containers they depend on (e.g. CASim) are still running.
+func containerQuickSaveTargets(cfg *config.Config, logger *slog.Logger) []manager.QuickSaveTarget {
+	var targets []manager.QuickSaveTarget
+	containers := cfg.BuildDetail.Containers
+	for i := len(containers) - 1; i >= 0; i-- {
+		qs := containers[i].QuickSave
+		if qs == nil {
+			continue
+		}
+
+		var auth manager.QuickSaveAuth
+		if qs.UseInterServerAuth {
+			auth = newQuickSaveInterServerAuth(cfg, logger)
+		}
+		targets = append(targets, manager.NewQuickSaveTarget(containers[i].Name, qs.Port, qs.Path, qs.Query, qs.Method, auth, qs.ApiKey, qs.Wait))
+	}
+
+	return targets
 }

@@ -1,0 +1,58 @@
+#!/bin/sh
+# Fake docker CLI for dockergame tests. Records calls in $FAKE_DOCKER_STATE/calls.log.
+# Images: img-sleep runs until `docker stop`, img-exit0 / img-exit3 exit with that code,
+# img-missing fails `docker image inspect`.
+state="${FAKE_DOCKER_STATE:?}"
+cmd="$1"
+shift
+
+case "$cmd" in
+image)
+	for a in "$@"; do image="$a"; done
+	if [ "$image" = "img-missing" ]; then
+		echo "Error: No such image: $image" >&2
+		exit 1
+	fi
+	echo "sha256:fake-$image"
+	;;
+rm)
+	for a in "$@"; do name="$a"; done
+	echo "rm $name" >>"$state/calls.log"
+	;;
+stop)
+	for a in "$@"; do name="$a"; done
+	echo "stop $name $*" >>"$state/calls.log"
+	touch "$state/$name.stopped"
+	;;
+run)
+	name=""
+	envfile=""
+	image=""
+	prev=""
+	for a in "$@"; do
+		case "$prev" in
+		--name) name="$a" ;;
+		--env-file) envfile="$a" ;;
+		esac
+		case "$a" in
+		img-*) image="$a" ;;
+		esac
+		prev="$a"
+	done
+	echo "run $name $*" >>"$state/calls.log"
+	cp "$envfile" "$state/$name.env"
+	echo "hello from $name"
+	case "$image" in
+	img-exit0) exit 0 ;;
+	img-exit3) exit 3 ;;
+	esac
+	while [ ! -f "$state/$name.stopped" ]; do
+		sleep 0.05
+	done
+	exit 143
+	;;
+*)
+	echo "unexpected docker command $cmd" >&2
+	exit 2
+	;;
+esac
