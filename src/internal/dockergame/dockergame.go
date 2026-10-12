@@ -323,6 +323,8 @@ func (dockerGame *DockerGame) startContainer(ctx context.Context, procCtx contex
 		done:        make(chan struct{}),
 		proc: process.New(&process.Config{
 			ExeName: dockerGame.docker,
+			// docker is resolved from PATH (e.g. /usr/bin/docker), so its folder must not be chmod-ed.
+			SkipEnsureExecutable: true,
 		}, dockerGame.logger),
 	}
 	if err := c.proc.Init(ctx); err != nil {

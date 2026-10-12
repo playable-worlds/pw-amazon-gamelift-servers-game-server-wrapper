@@ -70,9 +70,14 @@ func newFixture(t *testing.T, containers ...config.Container) *fixture {
 		t.Skip("fake docker CLI is a shell script")
 	}
 
-	testdata, err := filepath.Abs("testdata")
+	// Copy the fake docker CLI into a folder with non-default permissions, so a test can
+	// check that the wrapper never changes them (it used to run chmod -R 755 on docker's folder).
+	fake, err := os.ReadFile(filepath.Join("testdata", "docker"))
 	require.NoError(t, err)
-	t.Setenv("PATH", testdata+string(os.PathListSeparator)+os.Getenv("PATH"))
+	bin := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "docker"), fake, 0700))
+	require.NoError(t, os.Chmod(bin, 0700))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	state := t.TempDir()
 	t.Setenv("FAKE_DOCKER_STATE", state)
@@ -194,7 +199,16 @@ func Test_Run_StartsInOrder_And_Stop_Stops_In_Reverse_Order(t *testing.T) {
 	require.NoError(t, f.game.Stop(context.Background()))
 	require.NoError(t, f.waitRun(t))
 
-	assert.Equal(t, []string{"rm casim", "run casim", "rm gameserver", "run gameserver", "stop gameserver", "stop casim"}, f.calls())
+	// Without a ready-check the next container's "rm" may race the previous "run", so
+	// only the run and stop order is fixed.
+	var lifecycle []string
+	for _, call := range f.calls() {
+		if !strings.HasPrefix(call, "rm ") {
+			lifecycle = append(lifecycle, call)
+		}
+	}
+	assert.Equal(t, []string{"run casim", "run gameserver", "stop gameserver", "stop casim"}, lifecycle)
+	assert.Subset(t, f.calls(), []string{"rm casim", "rm gameserver"})
 	assert.Equal(t, events.GameStatusFinished, f.game.HealthCheck(context.Background()))
 
 	_, err := os.Stat(f.game.envDir)
@@ -221,6 +235,18 @@ func Test_Run_Passes_Docker_Run_Args(t *testing.T) {
 	assert.Contains(t, calls, "img-sleep -batchmode -nographics -logFile -\n")
 	assert.Contains(t, calls, "stop gameserver -t 30 gameserver")
 	assert.Contains(t, calls, "stop casim -t 5 casim")
+}
+
+func Test_Run_Does_Not_Change_Docker_Folder_Permissions(t *testing.T) {
+	f := newFixture(t, casim("img-sleep"))
+	f.run(t)
+	f.waitForCall(t, "run casim")
+	require.NoError(t, f.game.Stop(context.Background()))
+	require.NoError(t, f.waitRun(t))
+
+	fi, err := os.Stat(filepath.Dir(f.game.docker))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0700), fi.Mode().Perm())
 }
 
 func Test_Run_Writes_Env_Files(t *testing.T) {

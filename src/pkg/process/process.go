@@ -87,6 +87,10 @@ func (process *process) Init(ctx context.Context) error {
 		return errors.Wrapf(err, "Failed to access executable '%s'", process.exePath)
 	}
 
+	if process.cfg.SkipEnsureExecutable {
+		return nil
+	}
+
 	return ensureExecutable(fi, process.exePath)
 }
 
@@ -182,6 +186,9 @@ type Config struct {
 	WorkingDirectory string
 	EnvVars          map[string]string
 	DelayStart       string
+	// SkipEnsureExecutable leaves the executable's folder permissions alone. Set it for
+	// system binaries (e.g. docker): Init would otherwise run chmod -R on their folder.
+	SkipEnsureExecutable bool
 }
 
 // New creates a new Process instance with the provided configuration and logger.
