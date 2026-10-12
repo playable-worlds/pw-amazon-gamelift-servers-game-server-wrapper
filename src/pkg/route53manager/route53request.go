@@ -3,6 +3,7 @@ package route53manager
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -10,8 +11,16 @@ import (
 	"github.com/pkg/errors"
 )
 
-func route53Request(ctx context.Context, data route53RequestData, client *route53.Client, logger *slog.Logger) error {
-	logger.DebugContext(ctx, "requesting route53 upsert",
+// LowestRecordTTL is the minimum TTL Route 53 accepts for a standard resource record set.
+const LowestRecordTTL int64 = 0
+
+type changeClient interface {
+	ChangeResourceRecordSets(ctx context.Context, params *route53.ChangeResourceRecordSetsInput, optFns ...func(*route53.Options)) (*route53.ChangeResourceRecordSetsOutput, error)
+}
+
+func route53Request(ctx context.Context, action types.ChangeAction, data route53RequestData, client changeClient, logger *slog.Logger) error {
+	logger.DebugContext(ctx, "requesting route53 change",
+		"action", action,
 		"name", data.recordName,
 		"value", data.recordValue,
 		"ttl", data.recordTtl,
@@ -23,7 +32,7 @@ func route53Request(ctx context.Context, data route53RequestData, client *route5
 		ChangeBatch: &types.ChangeBatch{
 			Changes: []types.Change{
 				{
-					Action: types.ChangeActionUpsert,
+					Action: action,
 					ResourceRecordSet: &types.ResourceRecordSet{
 						Name: aws.String(data.recordName),
 						ResourceRecords: []types.ResourceRecord{
@@ -43,15 +52,30 @@ func route53Request(ctx context.Context, data route53RequestData, client *route5
 
 	_, err := client.ChangeResourceRecordSets(ctx, input)
 	if err != nil {
-		logger.ErrorContext(ctx, "error performing route53 upsert Request", "err", err)
-		return errors.Wrap(err, "error performing route53 upsert Request")
+		if action == types.ChangeActionDelete && isRecordNotFound(err) {
+			logger.InfoContext(ctx, "route53 record already absent",
+				"name", data.recordName,
+				"hostedZoneId", data.hostedZoneId)
+			return nil
+		}
+		logger.ErrorContext(ctx, "error performing route53 change Request", "action", action, "err", err)
+		return errors.Wrapf(err, "error performing route53 %s Request", action)
 	}
 
-	logger.InfoContext(ctx, "route53 record upserted",
+	logger.InfoContext(ctx, "route53 record changed",
+		"action", action,
 		"name", data.recordName,
 		"value", data.recordValue,
 		"hostedZoneId", data.hostedZoneId)
 	return nil
+}
+
+func isRecordNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found")
 }
 
 type route53RequestData struct {
