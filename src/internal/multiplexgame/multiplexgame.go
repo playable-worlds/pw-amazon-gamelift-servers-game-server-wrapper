@@ -16,13 +16,13 @@ import (
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/credserver"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/multiplexgame/args"
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/sessionenv"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/game"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/helpers"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/logging"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/observability"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/process"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/route53manager"
-	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/sessiontemplate"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/types/events"
 	"github.com/pkg/errors"
 )
@@ -179,53 +179,24 @@ func (multiplexGame *MultiplexGame) Run(ctx context.Context, startArgs *game.Sta
 	}
 
 	if startArgs != nil {
-		procCfg := &process.Config{
-			EnvVars:          map[string]string{},
-			WorkingDirectory: build.WorkingDir,
-			ExeName:          build.RelativeExePath,
-			DelayStart:       build.DelayStart,
-		}
-
-		if startArgs.GameProperties != "" {
-			if err := startArgs.EnsureGamePropertiesMap(); err != nil {
-				multiplexGame.logger.Error("Failed to unmarshall process args: ", "error", err)
-				return fmt.Errorf("failed to unmarshall process args: %w", err)
-			}
-
-			for k, v := range startArgs.GamePropertiesMap {
-				procCfg.EnvVars[k] = v
-			}
-		}
-
-		// Inject fleet-role credentials as AWS_* env vars if explicitly requested.
-		if startArgs.HostingStart != nil && startArgs.HostingStart.AwsCredentials != nil && startArgs.HostingStart.InjectAwsCredentials {
-			awsCredentials := startArgs.HostingStart.AwsCredentials
-			awsEnvVars := map[string]string{
-				"AWS_ACCESS_KEY_ID":     awsCredentials.AccessKeyId,
-				"AWS_SECRET_ACCESS_KEY": awsCredentials.SecretAccessKey,
-				"AWS_SESSION_TOKEN":     awsCredentials.SessionToken,
-			}
-
-			for k, v := range awsEnvVars {
-				procCfg.EnvVars[k] = v
-			}
-		}
-
-		if credSrv != nil {
-			procCfg.EnvVars["PW_CRED_SERVER_URL"] = credSrv.Addr
-			procCfg.EnvVars["PW_CRED_SERVER_TOKEN"] = credSrv.Token
-		}
-
 		// Add start args as env variables.
 		startArgs.CliArgs = append(startArgs.CliArgs, build.DefaultArgs...)
 
-		for _, arg := range multiplexGame.cfg.BuildDetail.EnvVars {
-			value, err := sessiontemplate.Execute(arg.Name, arg.Value, startArgs)
-			if err != nil {
-				return err
-			}
+		envVars, err := sessionenv.Build(startArgs, multiplexGame.cfg.BuildDetail.EnvVars, sessionenv.Options{
+			// Inject fleet-role credentials as AWS_* env vars if explicitly requested.
+			InjectAwsCredentials: startArgs.HostingStart != nil && startArgs.InjectAwsCredentials,
+			CredentialServer:     credSrv,
+		})
+		if err != nil {
+			multiplexGame.logger.Error("Failed to build process environment: ", "error", err)
+			return err
+		}
 
-			procCfg.EnvVars[arg.Name] = value
+		procCfg := &process.Config{
+			EnvVars:          envVars,
+			WorkingDirectory: build.WorkingDir,
+			ExeName:          build.RelativeExePath,
+			DelayStart:       build.DelayStart,
 		}
 
 		for k := range procCfg.EnvVars {

@@ -1,0 +1,67 @@
+# Example: run two docker containers per game session (launcher: docker).
+# Only game-server-details differs from a process-launcher config; the other sections
+# (log-config, readiness, orchestration, route53, datadog, otelcol, credentials) work as usual.
+
+log-config:
+  wrapper-log-level: debug
+  game-server-logs-dir: ./game-server-logs
+
+ports:
+  gamePort: 7777  # port reported to GameLift; the gameserver container listens on it (host network)
+
+use-fleet-role-credentials: true    # required for inject-aws-credentials
+local-credential-server: true       # required for use-credential-server
+
+game-server-details:
+  launcher: docker  # "process" (default) runs executable-file-path instead
+  containers:
+    # Containers start in list order. The next one starts only after ready-check passes.
+    # They are stopped (docker stop, SIGTERM then SIGKILL after stop-timeout) and quicksaved
+    # in reverse order. If any container exits, the others are stopped and the session ends.
+    - name: casim                     # docker container name
+      image: "casim-rust:v8.2.1"      # must already be present locally (docker load); checked at startup
+      network: host                   # default; localhost services keep working inside the container
+      docker-run-args: ["--entrypoint", "/usr/local/bin/casim"]
+      use-credential-server: true     # passes PW_CRED_SERVER_URL / PW_CRED_SERVER_TOKEN
+      env-vars:                       # rendered like game-server-env-vars, written to a 0600 --env-file
+        - name: S3_ZONE_ID
+          value: "{{.GameSessionName}}"
+        - name: SIM_HTTP_SERVER_PORT
+          value: "50042"
+      ready-check:
+        url: "http://localhost:50042/ping"
+        timeout: "120s"               # default 120s
+        interval: "2s"                # default 2s
+      stop-timeout: "55s"             # default 30s
+      quick-save:                     # same options as the top-level quick-save-* keys
+        port: 50042
+        api-key: "casim-api-key"
+        wait: "10s"                   # defaults to 60s like quick-save-wait; "0s" disables
+
+    - name: gameserver
+      image: "gameserver:1234_trunk"
+      inject-aws-credentials: true    # passes AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
+      docker-run-args:
+        - "-v"
+        - "/local/game/pwserver:/opt/starsreach/pwserver:ro"
+        - "--ulimit"
+        - "core=-1"
+      args:                           # appended after the image, ordered by pos
+        - arg: "-batchmode"
+          pos: 0
+        - arg: "-logFile"
+          val: "-"
+          pos: 1
+      env-vars:
+        - name: WORLD_ID
+          value: "{{.GameSessionName}}"
+        - name: CASIM_URL
+          value: "http://{{.GameSessionName}}.worlds.example.com:50042"
+      stop-timeout: "55s"
+      quick-save:
+        port: 4500
+        path: "/save"
+        query: "scope=zone"
+        method: "GET"
+        use-inter-server-auth: true
+        wait: "60s"

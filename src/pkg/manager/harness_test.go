@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -430,4 +431,73 @@ func Test_Harness_QuickSave_Waits_Before_Shutdown(t *testing.T) {
 	logBuffer := harnessTestHelper.LogBuffer.String()
 	assert.Contains(t, logBuffer, "Quicksave completed successfully")
 	assert.Contains(t, logBuffer, "waiting after quicksave before shutdown")
+}
+
+func Test_Harness_QuickSave_Targets_Called_In_Order(t *testing.T) {
+	var mu sync.Mutex
+	var calls []string
+	newServer := func(name string) (*httptest.Server, int) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			calls = append(calls, name+" "+r.Method+" "+r.URL.Path+" "+r.Header.Get("Authorization")+r.Header.Get("x-api-key"))
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		}))
+		_, portStr, err := net.SplitHostPort(server.Listener.Addr().String())
+		assert.Nil(t, err)
+		port, err := strconv.Atoi(portStr)
+		assert.Nil(t, err)
+		return server, port
+	}
+	gameserver, gameserverPort := newServer("gameserver")
+	defer gameserver.Close()
+	casim, casimPort := newServer("casim")
+	defer casim.Close()
+
+	// legacy quicksave disabled: targets alone must enable it
+	harnessTestHelper := CreateHarnessTestHelperWithQuickSave(time.Second*5, false, "0s")
+	harnessTestHelper.Harness.SetQuickSaveTargets([]QuickSaveTarget{
+		NewQuickSaveTarget("gameserver", gameserverPort, "/save", "scope=zone", "GET", stubQuickSaveAuth{header: "Bearer gs"}, "", "0s"),
+		NewQuickSaveTarget("casim", casimPort, "", "", "", nil, "casim-key", "0s"),
+	})
+	harnessTestHelper.Harness.hostingStartEvent = &events.HostingStart{
+		GameSessionName: "79315e7a-02f5-4b86-8b3d-88ffdcf3a081",
+		GamePort:        7777,
+	}
+
+	err := harnessTestHelper.Harness.Close(harnessTestHelper.Ctx)
+
+	assert.Nil(t, err)
+	assert.True(t, harnessTestHelper.GameService.StopCalled)
+	assert.Equal(t, []string{
+		"gameserver GET /save Bearer gs",
+		"casim POST /quicksave casim-key",
+	}, calls)
+}
+
+func Test_Harness_QuickSave_Target_Failure_Does_Not_Skip_Others(t *testing.T) {
+	requestReceived := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestReceived = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	_, portStr, err := net.SplitHostPort(server.Listener.Addr().String())
+	assert.Nil(t, err)
+	port, err := strconv.Atoi(portStr)
+	assert.Nil(t, err)
+
+	harnessTestHelper := CreateHarnessTestHelperWithQuickSave(time.Second*5, false, "0s")
+	harnessTestHelper.Harness.SetQuickSaveTargets([]QuickSaveTarget{
+		// nothing listens on port 1
+		NewQuickSaveTarget("gameserver", 1, "", "", "", nil, "", "0s"),
+		NewQuickSaveTarget("casim", port, "", "", "", nil, "", "0s"),
+	})
+	harnessTestHelper.Harness.hostingStartEvent = &events.HostingStart{GameSessionName: "zone"}
+
+	err = harnessTestHelper.Harness.Close(harnessTestHelper.Ctx)
+
+	assert.Nil(t, err)
+	assert.True(t, requestReceived)
+	assert.Contains(t, harnessTestHelper.LogBuffer.String(), "Failed to perform quicksave")
 }

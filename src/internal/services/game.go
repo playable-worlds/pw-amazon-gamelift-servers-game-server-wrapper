@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/config"
+	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/dockergame"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/internal/multiplexgame"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/game"
 	"github.com/amazon-gamelift/amazon-gamelift-servers-game-server-wrapper/pkg/logging"
@@ -25,6 +26,15 @@ func getGame(ctx context.Context, cfg *config.Config, logger *slog.Logger, gl lo
 	}
 
 	var err error
+
+	if cfg.BuildDetail.IsDocker() {
+		dockerGame, err := dockergame.New(*cfg, logger, gl, spanner)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to initialize docker game")
+		}
+
+		return dockerGame, nil
+	}
 
 	// Clean paths and build a path to be checked
 	pathToCheck := filepath.Clean(cfg.BuildDetail.RelativeExePath)
